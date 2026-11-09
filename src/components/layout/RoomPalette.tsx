@@ -113,7 +113,7 @@ export const RoomPalette: React.FC<RoomPaletteProps> = ({
       </div>
 
       {/* Bottom Center Floor Level Tabs */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 select-none">
+      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 -ml-20 z-20 select-none">
         <div className="bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl p-1 flex items-center gap-1 shadow-2xl">
           <div className="px-2 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1 border-r border-slate-800 mr-1">
             <Layers className="w-3.5 h-3.5 text-sky-400" />
