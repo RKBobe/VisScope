@@ -246,7 +246,7 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
       </div>
 
       {/* Dynamic Measurement Banner */}
-      <div className="absolute bottom-4 left-4 z-20 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl px-4 py-2 shadow-xl flex items-center gap-4 text-xs font-mono">
+      <div className="absolute bottom-4 right-4 z-20 bg-slate-900/90 backdrop-blur border border-slate-700/80 rounded-xl px-4 py-2 shadow-xl hidden sm:flex items-center gap-4 text-xs font-mono">
         <div>
           <span className="text-slate-400">ANSI GLA: </span>
           <span className="text-sky-400 font-bold">{ansiData.ansi_gla_sqft} SF</span>
