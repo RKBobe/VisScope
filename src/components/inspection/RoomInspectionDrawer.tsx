@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   RoomNode,
   QualityClass,
@@ -12,6 +12,7 @@ import {
 } from '../../types/sprocket';
 import { speechService } from '../../services/voice/speechService';
 import { parseVoiceDefectTranscript, createDefectFromVoice, ParsedVoiceDefect } from '../../services/voice/intentParser';
+import { compressImage } from '../../services/imageUtils';
 import {
   X,
   Mic,
@@ -25,6 +26,8 @@ import {
   Layers,
   Sparkles,
   DoorOpen,
+  Eye,
+  RefreshCw,
 } from 'lucide-react';
 
 interface RoomInspectionDrawerProps {
@@ -197,28 +200,49 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
     onUpdateRoom({ ...room, openings: updated });
   };
 
-  // Photo simulation
-  const handleAddPhoto = (direction: 'North' | 'South' | 'East' | 'West' | 'Defect') => {
-    const azimuthMap: Record<string, number> = {
-      North: 0,
-      East: 90,
-      South: 180,
-      West: 270,
-      Defect: 45,
-    };
-    const newPhoto: RoomPhoto = {
-      id: `photo-${Date.now()}`,
-      direction,
-      azimuth_deg: azimuthMap[direction] || 0,
-      timestamp: new Date().toISOString(),
-      file_uri: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="100%" height="100%" fill="%230f172a"/><text x="50%" y="45%" fill="%2338bdf8" text-anchor="middle" font-size="18" font-family="sans-serif">${direction} Wall (${azimuthMap[direction]}°)</text><text x="50%" y="60%" fill="%2394a3b8" text-anchor="middle" font-size="12" font-family="sans-serif">${room.name} - ${new Date().toLocaleTimeString()}</text></svg>`,
-    };
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [previewPhoto, setPreviewPhoto] = useState<RoomPhoto | null>(null);
 
-    const existingFiltered = room.photos.filter((p) => p.direction !== direction);
-    onUpdateRoom({
-      ...room,
-      photos: [...existingFiltered, newPhoto],
-    });
+  // Mobile Camera / Photo Capture Handler
+  const handlePhotoCapture = async (
+    direction: 'North' | 'South' | 'East' | 'West' | 'Defect',
+    file: File
+  ) => {
+    try {
+      const dataUri = await compressImage(file, 1600, 0.85);
+      const azimuthMap: Record<string, number> = {
+        North: 0,
+        East: 90,
+        South: 180,
+        West: 270,
+        Defect: 45,
+      };
+
+      const newPhoto: RoomPhoto = {
+        id: `photo-${Date.now()}`,
+        direction,
+        azimuth_deg: azimuthMap[direction] || 0,
+        timestamp: new Date().toISOString(),
+        file_uri: dataUri,
+      };
+
+      const existingFiltered = room.photos.filter((p) => p.direction !== direction);
+      onUpdateRoom({
+        ...room,
+        photos: [...existingFiltered, newPhoto],
+      });
+    } catch (err) {
+      console.error('Failed to capture photo:', err);
+    }
+  };
+
+  const handleDeletePhoto = (direction: string) => {
+    const updated = room.photos.filter((p) => p.direction !== direction);
+    onUpdateRoom({ ...room, photos: updated });
+  };
+
+  const triggerCamera = (direction: string) => {
+    fileInputRefs.current[direction]?.click();
   };
 
   return (
@@ -767,39 +791,113 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
               <Camera className="w-4 h-4 text-sky-400" />
-              Cardinal Photos (Compass Azimuth)
+              Cardinal Photos (Mobile Camera)
             </h3>
             <span className="text-[10px] text-slate-400 font-mono">UAD Compliant</span>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {(['North', 'East', 'South', 'West'] as const).map((dir) => {
+          <div className="grid grid-cols-2 gap-2.5">
+            {(['North', 'East', 'South', 'West', 'Defect'] as const).map((dir) => {
               const photo = room.photos.find((p) => p.direction === dir);
+              const azimuthMap: Record<string, number> = {
+                North: 0,
+                East: 90,
+                South: 180,
+                West: 270,
+                Defect: 45,
+              };
+
               return (
                 <div
                   key={dir}
-                  className="bg-slate-900/90 border border-slate-700 rounded-lg p-2 flex flex-col items-center justify-center text-center"
+                  className={`bg-slate-900/90 border rounded-xl p-2.5 flex flex-col items-center justify-between transition-colors ${
+                    photo ? 'border-slate-700/80 bg-slate-900' : 'border-slate-700/60 hover:border-slate-600'
+                  }`}
                 >
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-300 mb-1">
-                    <Compass className="w-3 h-3 text-sky-400" />
-                    {dir} Wall
+                  {/* Hidden Native Camera Input with capture="environment" for rear mobile camera */}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    ref={(el) => {
+                      fileInputRefs.current[dir] = el;
+                    }}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        handlePhotoCapture(dir, file);
+                        e.target.value = '';
+                      }
+                    }}
+                  />
+
+                  {/* Header Title */}
+                  <div className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-300 mb-1.5 px-0.5">
+                    <span className="flex items-center gap-1">
+                      <Compass className="w-3 h-3 text-sky-400" />
+                      {dir === 'Defect' ? 'Defect' : `${dir} Wall`}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {azimuthMap[dir]}°
+                    </span>
                   </div>
+
                   {photo ? (
-                    <div className="w-full">
-                      <div className="h-16 rounded overflow-hidden mb-1 border border-slate-700 bg-slate-950 flex items-center justify-center">
-                        <img src={photo.file_uri} alt={dir} className="w-full h-full object-cover" />
+                    <div className="w-full relative group">
+                      <div className="h-24 w-full rounded-lg overflow-hidden border border-slate-700 bg-slate-950 flex items-center justify-center relative">
+                        <img
+                          src={photo.file_uri}
+                          alt={`${dir} Wall`}
+                          className="w-full h-full object-cover cursor-pointer"
+                          onClick={() => setPreviewPhoto(photo)}
+                        />
+                        {/* Hover / Touch Quick Action Overlay */}
+                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button
+                            onClick={() => setPreviewPhoto(photo)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-sky-400 rounded-lg shadow"
+                            title="View Fullscreen"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => triggerCamera(dir)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 rounded-lg shadow"
+                            title="Retake Photo"
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => handleDeletePhoto(dir)}
+                            className="p-1.5 bg-slate-800 hover:bg-slate-700 text-rose-400 rounded-lg shadow"
+                            title="Delete Photo"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </div>
-                      <span className="text-[10px] text-emerald-400 font-mono block">
-                        Captured ({photo.azimuth_deg}°)
-                      </span>
+
+                      <div className="flex items-center justify-between mt-1 px-0.5">
+                        <span className="text-[10px] text-emerald-400 font-mono">
+                          Captured ({photo.azimuth_deg}°)
+                        </span>
+                        <button
+                          onClick={() => triggerCamera(dir)}
+                          className="text-[10px] text-slate-400 hover:text-sky-300 font-medium"
+                        >
+                          Retake
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <button
-                      onClick={() => handleAddPhoto(dir)}
-                      className="w-full h-16 border border-dashed border-slate-700 hover:border-sky-500 rounded flex flex-col items-center justify-center text-slate-400 hover:text-sky-400 transition"
+                      onClick={() => triggerCamera(dir)}
+                      className="w-full h-24 border border-dashed border-slate-700 hover:border-sky-500 hover:bg-sky-950/20 rounded-lg flex flex-col items-center justify-center text-slate-400 hover:text-sky-400 transition group p-2 text-center"
                     >
-                      <Camera className="w-4 h-4 mb-0.5" />
-                      <span className="text-[10px]">Capture</span>
+                      <Camera className="w-6 h-6 mb-1 text-slate-500 group-hover:text-sky-400 transition" />
+                      <span className="text-[11px] font-semibold">Take Photo</span>
+                      <span className="text-[9px] text-slate-500">Tap to activate camera</span>
                     </button>
                   )}
                 </div>
@@ -819,6 +917,62 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Lightbox Photo Preview Modal */}
+      {previewPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-4 animate-in fade-in duration-150"
+          onClick={() => setPreviewPhoto(null)}
+        >
+          <div
+            className="relative max-w-3xl max-h-[85vh] bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-3 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Compass className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-bold text-white">
+                  {previewPhoto.direction} Facing Photo ({previewPhoto.azimuth_deg}°)
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {room.name}
+                </span>
+              </div>
+              <button
+                onClick={() => setPreviewPhoto(null)}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Full Image */}
+            <div className="p-2 bg-slate-950 flex items-center justify-center overflow-hidden max-h-[70vh]">
+              <img
+                src={previewPhoto.file_uri}
+                alt={previewPhoto.direction}
+                className="max-w-full max-h-[68vh] object-contain rounded-lg"
+              />
+            </div>
+
+            {/* Footer */}
+            <div className="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
+              <span>Timestamp: {new Date(previewPhoto.timestamp).toLocaleString()}</span>
+              <button
+                onClick={() => {
+                  triggerCamera(previewPhoto.direction);
+                  setPreviewPhoto(null);
+                }}
+                className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+              >
+                <Camera className="w-3.5 h-3.5" />
+                Retake
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
