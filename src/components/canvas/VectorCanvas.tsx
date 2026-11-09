@@ -1,7 +1,7 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { RoomNode, Point2D } from '../../types/sprocket';
 import { applyMagneticSnap, calculateAnsiZ765GLA, SnapGuide } from '../../services/math/geometry';
-import { ZoomIn, ZoomOut, Maximize2, Grid } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, Grid, Trash2 } from 'lucide-react';
 
 interface VectorCanvasProps {
   rooms: RoomNode[];
@@ -9,6 +9,7 @@ interface VectorCanvasProps {
   onSelectRoom: (roomId: string) => void;
   onUpdateRoomPosition: (roomId: string, newPos: Point2D) => void;
   onUpdateRoomDimensions: (roomId: string, length_ft: number, width_ft: number) => void;
+  onDeleteRoom: (roomId: string) => void;
   showAnsiBuffer: boolean;
   onToggleAnsiBuffer: () => void;
 }
@@ -19,10 +20,12 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
   onSelectRoom,
   onUpdateRoomPosition,
   onUpdateRoomDimensions,
+  onDeleteRoom,
   showAnsiBuffer,
   onToggleAnsiBuffer,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const trashZoneRef = useRef<HTMLDivElement>(null);
 
   // Canvas Pan & Zoom State
   const [viewBox, setViewBox] = useState<{ x: number; y: number; width: number; height: number }>({
@@ -39,6 +42,7 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
   const [draggingRoomId, setDraggingRoomId] = useState<string | null>(null);
   const [dragOffset, setDragOffset] = useState<Point2D>({ x: 0, y: 0 });
   const [activeSnapGuides, setActiveSnapGuides] = useState<SnapGuide[]>([]);
+  const [isOverTrash, setIsOverTrash] = useState(false);
 
   // Room Resizing State
   const [resizingRoomId, setResizingRoomId] = useState<string | null>(null);
@@ -88,6 +92,18 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
 
     // 2. Handle Room Dragging
     if (draggingRoomId) {
+      // Check collision with Trash Can drop zone
+      if (trashZoneRef.current) {
+        const rect = trashZoneRef.current.getBoundingClientRect();
+        const over = (
+          e.clientX >= rect.left - 20 &&
+          e.clientX <= rect.right + 20 &&
+          e.clientY >= rect.top - 20 &&
+          e.clientY <= rect.bottom + 20
+        );
+        setIsOverTrash(over);
+      }
+
       const room = rooms.find((r) => r.id === draggingRoomId);
       if (!room) return;
 
@@ -138,11 +154,15 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
   };
 
   const handlePointerUp = () => {
+    if (draggingRoomId && isOverTrash) {
+      onDeleteRoom(draggingRoomId);
+    }
     setIsPanning(false);
     setDraggingRoomId(null);
     setResizingRoomId(null);
     setResizeHandleType(null);
     setActiveSnapGuides([]);
+    setIsOverTrash(false);
   };
 
   // Zoom Helpers
@@ -243,6 +263,44 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
         >
           ANSI
         </button>
+      </div>
+
+      {/* Drag & Drop Trash Can Target */}
+      <div
+        ref={trashZoneRef}
+        onClick={() => {
+          if (activeRoomId) {
+            onDeleteRoom(activeRoomId);
+          }
+        }}
+        className={`absolute bottom-4 left-4 z-20 transition-all duration-200 select-none cursor-pointer flex items-center gap-2 rounded-2xl shadow-2xl border ${
+          isOverTrash
+            ? 'p-4 bg-rose-600 text-white border-rose-300 scale-110 shadow-rose-900/60 ring-4 ring-rose-500/50'
+            : draggingRoomId
+            ? 'p-3.5 bg-slate-900/95 text-rose-400 border-rose-600/70 shadow-2xl animate-pulse ring-2 ring-rose-500/20'
+            : activeRoomId
+            ? 'p-2.5 bg-slate-900/90 text-rose-400 border-slate-700/80 hover:border-rose-500/80 hover:bg-rose-950/40 hover:text-rose-300'
+            : 'p-2.5 bg-slate-900/70 text-slate-500 border-slate-800/80 hover:border-slate-700 hover:text-slate-300'
+        }`}
+        title={
+          draggingRoomId
+            ? 'Drop room here to delete'
+            : activeRoomId
+            ? 'Click or drag room here to delete'
+            : 'Trash Can (drag room here to delete)'
+        }
+      >
+        <Trash2 className={`${draggingRoomId ? 'w-6 h-6' : 'w-5 h-5'} transition-all`} />
+        {draggingRoomId && (
+          <span className="text-xs font-bold uppercase tracking-wider">
+            {isOverTrash ? 'Drop to Delete Room' : 'Drag here to delete'}
+          </span>
+        )}
+        {!draggingRoomId && activeRoomId && (
+          <span className="text-xs font-semibold hidden md:inline text-rose-300">
+            Delete Selected
+          </span>
+        )}
       </div>
 
       {/* Dynamic Measurement Banner */}

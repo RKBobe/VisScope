@@ -239,6 +239,7 @@ export const App: React.FC = () => {
           onSelectRoom={(id) => setActiveRoomId(id)}
           onUpdateRoomPosition={handleUpdateRoomPosition}
           onUpdateRoomDimensions={handleUpdateRoomDimensions}
+          onDeleteRoom={handleDeleteRoom}
           showAnsiBuffer={showAnsiBuffer}
           onToggleAnsiBuffer={() => setShowAnsiBuffer(!showAnsiBuffer)}
         />
