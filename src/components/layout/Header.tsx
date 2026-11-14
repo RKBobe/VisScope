@@ -9,12 +9,16 @@ import {
   CheckCircle2,
   Home,
   Save,
+  Upload,
+  FileSpreadsheet,
 } from 'lucide-react';
 
 interface HeaderProps {
   project: SprocketProject;
   onOpenValuation: () => void;
   onOpenProcurement: () => void;
+  onOpenIngestion: () => void;
+  onOpenPropertyRecord: () => void;
   onSaveManual: () => void;
 }
 
@@ -22,6 +26,8 @@ export const Header: React.FC<HeaderProps> = ({
   project,
   onOpenValuation,
   onOpenProcurement,
+  onOpenIngestion,
+  onOpenPropertyRecord,
   onSaveManual,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
@@ -73,6 +79,11 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="flex items-center gap-1.5 text-xs text-slate-400">
               <Home className="w-3 h-3 text-slate-500" />
               <span>{project.address.street}, {project.address.city}, {project.address.state} {project.address.zip}</span>
+              {project.property_metadata?.parcel_id && (
+                <span className="text-[10px] font-mono bg-sky-950/80 text-sky-300 border border-sky-800/80 px-1.5 py-0.2 rounded ml-1">
+                  PIN: {project.property_metadata.parcel_id}
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -127,6 +138,26 @@ export const Header: React.FC<HeaderProps> = ({
           title="Save Project to IndexedDB"
         >
           <Save className="w-4 h-4" />
+        </button>
+
+        {/* Document Ingestion Trigger */}
+        <button
+          onClick={onOpenIngestion}
+          className="bg-sky-950/90 hover:bg-sky-900 text-sky-200 border border-sky-700/80 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+          title="Ingest Property Record Card, Blueprint PDF, or Image"
+        >
+          <Upload className="w-3.5 h-3.5 text-sky-400" />
+          <span>Ingest File</span>
+        </button>
+
+        {/* Property Record Card & Data Fields Trigger */}
+        <button
+          onClick={onOpenPropertyRecord}
+          className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+          title="View & Edit Prepopulated Property Data Fields"
+        >
+          <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+          <span className="hidden md:inline">Property</span> Fields
         </button>
 
         {/* Craftsman Valuation Modal Trigger */}

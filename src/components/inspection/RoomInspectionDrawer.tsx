@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   RoomNode,
+  RoomNodeType,
   QualityClass,
   ConditionClass,
   FloorLevel,
@@ -265,7 +266,38 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
               <option value="First Floor">First Floor</option>
               <option value="Second Floor">Second Floor</option>
               <option value="Basement">Basement</option>
+              <option value="Attic">Attic</option>
             </select>
+            <select
+              value={room.node_type || 'interior_room'}
+              onChange={(e) => {
+                const nextType = e.target.value as RoomNodeType;
+                onUpdateRoom({
+                  ...room,
+                  node_type: nextType,
+                  exclude_from_gla: nextType === 'accessory_structure',
+                });
+              }}
+              className="text-xs bg-slate-700 text-sky-300 rounded px-2 py-0.5 border border-slate-600 focus:outline-none"
+            >
+              <option value="interior_room">Interior Room</option>
+              <option value="exterior_footprint">Exterior Footprint</option>
+              <option value="accessory_structure">Accessory / Non-GLA</option>
+            </select>
+            <label className="flex items-center gap-1 text-[11px] text-slate-300 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={Boolean(room.exclude_from_gla)}
+                onChange={(e) =>
+                  onUpdateRoom({
+                    ...room,
+                    exclude_from_gla: e.target.checked,
+                  })
+                }
+                className="rounded border-slate-600 bg-slate-800 text-amber-500"
+              />
+              <span>Non-GLA</span>
+            </label>
             <span className="text-xs text-emerald-400 font-semibold">
               Total: ${room.cost_rollup.room_total.toLocaleString()}
             </span>

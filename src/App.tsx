@@ -5,6 +5,10 @@ import {
   Point2D,
   FloorLevel,
   RegionalCostIndex,
+  IngestionGeometryMode,
+  PropertyMetadata,
+  QualityClass,
+  ConditionClass,
 } from './types/sprocket';
 import {
   loadSavedProject,
@@ -21,13 +25,18 @@ import {
 import {
   calculateRoomCostRollup,
   calculateProjectSummary,
+  resolveRegionalCostIndex,
 } from './services/math/valuation';
+import { applyIngestionToProject } from './services/ingestion/documentIngestor';
+import { IngestionResult } from './services/ingestion/types';
 import { Header } from './components/layout/Header';
 import { RoomPalette } from './components/layout/RoomPalette';
 import { VectorCanvas } from './components/canvas/VectorCanvas';
 import { RoomInspectionDrawer } from './components/inspection/RoomInspectionDrawer';
 import { ValuationModal } from './components/modals/ValuationModal';
 import { LowesProcurementModal } from './components/modals/LowesProcurementModal';
+import { DocumentIngestionModal } from './components/modals/DocumentIngestionModal';
+import { PropertyRecordModal } from './components/modals/PropertyRecordModal';
 
 export const App: React.FC = () => {
   const [project, setProject] = useState<SprocketProject>(createInitialProject());
@@ -38,6 +47,8 @@ export const App: React.FC = () => {
   // Modals state
   const [isValuationOpen, setIsValuationOpen] = useState(false);
   const [isProcurementOpen, setIsProcurementOpen] = useState(false);
+  const [isIngestionOpen, setIsIngestionOpen] = useState(false);
+  const [isPropertyRecordOpen, setIsPropertyRecordOpen] = useState(false);
 
   // Initial load from IndexedDB
   useEffect(() => {
@@ -67,6 +78,7 @@ export const App: React.FC = () => {
       'First Floor': 0,
       'Second Floor': 0,
       Basement: 0,
+      Attic: 0,
     };
     for (const r of project.rooms) {
       if (counts[r.level] !== undefined) {
@@ -221,6 +233,45 @@ export const App: React.FC = () => {
     setProject(recomputeProject(project.rooms, newIndex));
   };
 
+  // Apply ingested document to project state
+  const handleApplyIngestion = (result: IngestionResult, mode: IngestionGeometryMode) => {
+    const nextProject = applyIngestionToProject(project, result, mode);
+    setProject(nextProject);
+    setCurrentLevel('First Floor');
+    setActiveRoomId(null);
+  };
+
+  // Update project address, property metadata, and baseline quality/condition from PropertyRecordModal
+  const handleUpdateProjectMetadata = (
+    updatedAddress: SprocketProject['address'],
+    updatedMetadata: PropertyMetadata,
+    baselineQuality: QualityClass,
+    baselineCondition: ConditionClass
+  ) => {
+    const nextCostIndex = resolveRegionalCostIndex(
+      updatedAddress.zip,
+      updatedAddress.city,
+      updatedAddress.state
+    );
+    const updatedRooms = project.rooms.map((r) =>
+      r.is_class_overridden
+        ? r
+        : {
+            ...r,
+            quality_class: baselineQuality,
+            condition_class: baselineCondition,
+          }
+    );
+    const recomputed = recomputeProject(updatedRooms, nextCostIndex);
+    setProject({
+      ...recomputed,
+      address: updatedAddress,
+      property_metadata: updatedMetadata,
+      baseline_quality: baselineQuality,
+      baseline_condition: baselineCondition,
+    });
+  };
+
   return (
     <div className="w-screen h-screen flex flex-col bg-[#090d16] text-slate-100 overflow-hidden font-sans">
       {/* Top Header */}
@@ -228,6 +279,8 @@ export const App: React.FC = () => {
         project={project}
         onOpenValuation={() => setIsValuationOpen(true)}
         onOpenProcurement={() => setIsProcurementOpen(true)}
+        onOpenIngestion={() => setIsIngestionOpen(true)}
+        onOpenPropertyRecord={() => setIsPropertyRecordOpen(true)}
         onSaveManual={() => saveProject(project)}
       />
 
@@ -242,6 +295,7 @@ export const App: React.FC = () => {
           onDeleteRoom={handleDeleteRoom}
           showAnsiBuffer={showAnsiBuffer}
           onToggleAnsiBuffer={() => setShowAnsiBuffer(!showAnsiBuffer)}
+          blueprintUnderlayUri={project.property_metadata?.blueprint_underlay_data_uri}
         />
 
         {/* Floating Room Template Palette */}
@@ -278,6 +332,21 @@ export const App: React.FC = () => {
         project={project}
         isOpen={isProcurementOpen}
         onClose={() => setIsProcurementOpen(false)}
+      />
+
+      {/* Document Ingestion & Prepopulation Modal */}
+      <DocumentIngestionModal
+        isOpen={isIngestionOpen}
+        onClose={() => setIsIngestionOpen(false)}
+        onApplyIngestion={handleApplyIngestion}
+      />
+
+      {/* Property Record & Appraisal Data Fields Modal */}
+      <PropertyRecordModal
+        project={project}
+        isOpen={isPropertyRecordOpen}
+        onClose={() => setIsPropertyRecordOpen(false)}
+        onUpdateProjectMetadata={handleUpdateProjectMetadata}
       />
     </div>
   );

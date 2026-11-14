@@ -6,6 +6,9 @@ import {
   calculateProjectSummary,
   PRAIRIE_VILLAGE_COST_INDEX,
   CRAFTSMAN_27_BASELINE_TABLE,
+  resolveRegionalCostIndex,
+  mapRawQualityToClass,
+  mapRawConditionToClass,
 } from '../valuation';
 import { RoomNode } from '../../../types/sprocket';
 
@@ -92,5 +95,23 @@ describe('Valuation & Craftsman Cost Engine', () => {
     expect(summary.total_cost_to_cure).toBe(2500);
     expect(summary.post_renovation_value).toBe(90804);
     expect(summary.as_is_value).toBe(88304); // 90804 - 2500
+  });
+
+  it('resolves KC metro regional cost indices and maps county quality/condition grades', () => {
+    const olathe = resolveRegionalCostIndex('66061', 'Olathe', 'KS');
+    expect(olathe.city).toBe('Olathe');
+    expect(olathe.state).toBe('KS');
+
+    const kcmo = resolveRegionalCostIndex('64133', 'Kansas City', 'MO');
+    expect(kcmo.zip_code).toBe('64133');
+    expect(kcmo.state).toBe('MO');
+
+    const independence = resolveRegionalCostIndex('64050', 'Independence', 'MO');
+    expect(independence.city).toBe('Independence');
+
+    expect(mapRawQualityToClass('Fair+')).toBe('Class 5');
+    expect(mapRawQualityToClass('B--B-')).toBe('Class 3');
+    expect(mapRawConditionToClass('PR')).toBe('Class 5');
+    expect(mapRawConditionToClass('4-AVERAGE')).toBe('Class 4');
   });
 });

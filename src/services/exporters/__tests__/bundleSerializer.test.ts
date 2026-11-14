@@ -100,4 +100,22 @@ describe('MeshEngine Bundle Serializer', () => {
     expect(zipBlob).toBeDefined();
     expect(zipBlob.size).toBeGreaterThan(0);
   });
+
+  it('escapes XML special characters in SVG floorplan and UAD XML output', () => {
+    const projectWithSpecialChars: SprocketProject = {
+      ...sampleProject,
+      name: 'Smith & Sons <Renovation>',
+      rooms: [
+        {
+          ...sampleProject.rooms[0],
+          name: 'Kitchen & Dining <Main>',
+        },
+      ],
+    };
+
+    const svg = generateFloorplanSVG(projectWithSpecialChars);
+    expect(svg).toContain('Smith &amp; Sons &lt;Renovation&gt;');
+    expect(svg).toContain('Kitchen &amp; Dining &lt;Main&gt;');
+    expect(svg).not.toContain('Kitchen & Dining <Main>');
+  });
 });

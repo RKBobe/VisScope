@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { RoomNode, Point2D } from '../../types/sprocket';
 import { applyMagneticSnap, calculateAnsiZ765GLA, SnapGuide } from '../../services/math/geometry';
 import { ZoomIn, ZoomOut, Maximize2, Grid, Trash2 } from 'lucide-react';
@@ -12,6 +12,7 @@ interface VectorCanvasProps {
   onDeleteRoom: (roomId: string) => void;
   showAnsiBuffer: boolean;
   onToggleAnsiBuffer: () => void;
+  blueprintUnderlayUri?: string;
 }
 
 export const VectorCanvas: React.FC<VectorCanvasProps> = ({
@@ -23,6 +24,7 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
   onDeleteRoom,
   showAnsiBuffer,
   onToggleAnsiBuffer,
+  blueprintUnderlayUri,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const trashZoneRef = useRef<HTMLDivElement>(null);
@@ -199,6 +201,12 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
     });
   };
 
+  // Auto-fit viewBox when rooms list changes (e.g. after document ingestion or level switch)
+  const roomIdsSignature = useMemo(() => rooms.map((r) => r.id).join('|'), [rooms]);
+  useEffect(() => {
+    handleResetZoom();
+  }, [roomIdsSignature]);
+
   // Mouse Wheel Zoom
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
@@ -359,6 +367,19 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
           fill={showGrid ? 'url(#sprocket-grid-5ft)' : '#090d16'}
         />
 
+        {/* Optional Blueprint / Sketch Underlay Image */}
+        {blueprintUnderlayUri && ansiData.exterior_hull_bounds && (
+          <image
+            href={blueprintUnderlayUri}
+            x={ansiData.exterior_hull_bounds.minX - 48}
+            y={ansiData.exterior_hull_bounds.minY - 48}
+            width={ansiData.exterior_hull_bounds.maxX - ansiData.exterior_hull_bounds.minX + 96}
+            height={ansiData.exterior_hull_bounds.maxY - ansiData.exterior_hull_bounds.minY + 96}
+            opacity={0.18}
+            preserveAspectRatio="xMidYMid meet"
+          />
+        )}
+
         {/* ANSI Z765 Outer Shell Buffer Visualization */}
         {showAnsiBuffer && ansiData.exterior_hull_bounds && (
           <g id="ansi-hull-layer">
@@ -403,6 +424,8 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
         {/* Room Nodes */}
         {rooms.map((room) => {
           const isSelected = room.id === activeRoomId;
+          const isExteriorFootprint = room.node_type === 'exterior_footprint';
+          const isAccessory = room.node_type === 'accessory_structure' || room.exclude_from_gla;
           const rx = room.canvas_position.x;
           const ry = room.canvas_position.y;
           const rw = room.dimensions.length_ft * 12;
@@ -433,12 +456,31 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                 width={rw}
                 height={rh}
                 rx="4"
+                strokeDasharray={isAccessory ? '6,4' : undefined}
                 className={`transition-colors duration-150 ${
                   isSelected
                     ? 'fill-slate-800 stroke-sky-400 stroke-[3]'
+                    : isAccessory
+                    ? 'fill-amber-950/30 stroke-amber-500/80 stroke-[2] hover:stroke-amber-400 hover:fill-amber-900/30'
+                    : isExteriorFootprint
+                    ? 'fill-emerald-950/35 stroke-emerald-400/90 stroke-[2.5] hover:stroke-emerald-300 hover:fill-emerald-900/35'
                     : 'fill-slate-900/90 stroke-slate-600 stroke-[2] hover:stroke-slate-400 hover:fill-slate-800/80'
                 }`}
               />
+
+              {/* Footprint / Non-GLA Corner Tag */}
+              {(isExteriorFootprint || isAccessory) && (
+                <text
+                  x={rx + 6}
+                  y={ry + 12}
+                  fill={isAccessory ? '#fbbf24' : '#34d399'}
+                  fontSize="8.5"
+                  fontWeight="700"
+                  fontFamily="monospace"
+                >
+                  {isAccessory ? 'ACCESSORY / NON-GLA' : 'EXTERIOR FOOTPRINT'}
+                </text>
+              )}
 
               {/* Wall Openings */}
               {room.openings.map((opening) => {

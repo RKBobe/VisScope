@@ -235,7 +235,10 @@ export function calculateAnsiZ765GLA(
   exterior_hull_bounds: { minX: number; minY: number; maxX: number; maxY: number } | null;
 } {
   const aboveGradeRooms = rooms.filter(
-    (r) => r.level === 'First Floor' || r.level === 'Second Floor'
+    (r) =>
+      r.level !== 'Basement' &&
+      !r.exclude_from_gla &&
+      r.node_type !== 'accessory_structure'
   );
 
   if (aboveGradeRooms.length === 0) {
@@ -266,46 +269,79 @@ export function calculateAnsiZ765GLA(
     if (rBottom > maxY) maxY = rBottom;
   }
 
-  // Calculate exterior perimeter in feet
-  const hullWidthInches = maxX - minX;
-  const hullHeightInches = maxY - minY;
-  const hullWidthFt = hullWidthInches / 12;
-  const hullHeightFt = hullHeightInches / 12;
-  const exteriorPerimeterFt = 2 * (hullWidthFt + hullHeightFt);
-
-  // Exterior wall buffer area in sqft:
-  // perimeter * (buffer / 12) + 4 corner squares (buffer/12 * buffer/12)
+  // Group interior-measured rooms (node_type !== 'exterior_footprint') by floor level
+  // so each floor level gets its own perimeter wall buffer and exterior_footprint nodes are never double-buffered.
   const bufferFt = exteriorWallBufferInches / 12;
-  const exterior_wall_buffer_sqft = Number(
-    (exteriorPerimeterFt * bufferFt + 4 * (bufferFt * bufferFt)).toFixed(2)
-  );
+  let totalBufferSqft = 0;
+  const levels = ['First Floor', 'Second Floor', 'Attic'] as const;
 
+  for (const lvl of levels) {
+    const levelInteriorRooms = aboveGradeRooms.filter(
+      (r) => r.level === lvl && r.node_type !== 'exterior_footprint'
+    );
+    if (levelInteriorRooms.length === 0) continue;
+
+    let lMinX = Infinity;
+    let lMinY = Infinity;
+    let lMaxX = -Infinity;
+    let lMaxY = -Infinity;
+
+    for (const r of levelInteriorRooms) {
+      const rLeft = r.canvas_position.x;
+      const rTop = r.canvas_position.y;
+      const rRight = rLeft + r.dimensions.length_ft * 12;
+      const rBottom = rTop + r.dimensions.width_ft * 12;
+      if (rLeft < lMinX) lMinX = rLeft;
+      if (rTop < lMinY) lMinY = rTop;
+      if (rRight > lMaxX) lMaxX = rRight;
+      if (rBottom > lMaxY) lMaxY = rBottom;
+    }
+
+    const hullWidthFt = (lMaxX - lMinX) / 12;
+    const hullHeightFt = (lMaxY - lMinY) / 12;
+    const exteriorPerimeterFt = 2 * (hullWidthFt + hullHeightFt);
+    totalBufferSqft += exteriorPerimeterFt * bufferFt + 4 * (bufferFt * bufferFt);
+  }
+
+  const exterior_wall_buffer_sqft = Number(totalBufferSqft.toFixed(2));
   const ansi_gla_sqft = Number(
     (interior_area_sqft + exterior_wall_buffer_sqft).toFixed(2)
   );
+  const pad = exterior_wall_buffer_sqft > 0 ? exteriorWallBufferInches : 0;
 
   return {
     interior_area_sqft: Number(interior_area_sqft.toFixed(2)),
     ansi_gla_sqft,
     exterior_wall_buffer_sqft,
     exterior_hull_bounds: {
-      minX: minX - exteriorWallBufferInches,
-      minY: minY - exteriorWallBufferInches,
-      maxX: maxX + exteriorWallBufferInches,
-      maxY: maxY + exteriorWallBufferInches,
+      minX: minX - pad,
+      minY: minY - pad,
+      maxX: maxX + pad,
+      maxY: maxY + pad,
     },
   };
 }
 
 /**
- * Calculates Gross Building Area (GBA) including Basements and all levels with exterior buffer.
+ * Calculates Gross Building Area (GBA) including Basements and enclosed levels.
+ * Exterior footprints are already outside-wall dimensions (1.0x); interior rooms receive a 1.07x wall factor.
  */
 export function calculateGBA(rooms: RoomNode[]): number {
   if (rooms.length === 0) return 0;
-  let totalInterior = 0;
+  let totalGba = 0;
   for (const r of rooms) {
-    totalInterior += r.floor_area_sqft;
+    // Skip unenclosed outdoor decks / open frame porches from enclosed GBA
+    if (
+      (r.exclude_from_gla || r.node_type === 'accessory_structure') &&
+      /\b(deck|open\s*frame\s*porch|ofp)\b/i.test(r.name)
+    ) {
+      continue;
+    }
+    if (r.node_type === 'exterior_footprint') {
+      totalGba += r.floor_area_sqft;
+    } else {
+      totalGba += r.floor_area_sqft * 1.07;
+    }
   }
-  // Standard exterior wall addition factor (~6-8% of interior area based on ANSI standards)
-  return Number((totalInterior * 1.07).toFixed(2));
+  return Number(totalGba.toFixed(2));
 }

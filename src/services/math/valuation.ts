@@ -19,6 +19,30 @@ export const PRAIRIE_VILLAGE_COST_INDEX: RegionalCostIndex = {
 
 export const COMMON_REGIONAL_INDICES: Record<string, RegionalCostIndex> = {
   '66208': PRAIRIE_VILLAGE_COST_INDEX,
+  '66061': {
+    zip_code: '66061',
+    city: 'Olathe',
+    state: 'KS',
+    material_modifier: -0.01,
+    labor_modifier: 0.11,
+    equipment_modifier: 0.00,
+  },
+  '64133': {
+    zip_code: '64133',
+    city: 'Kansas City',
+    state: 'MO',
+    material_modifier: 0.00,
+    labor_modifier: 0.14,
+    equipment_modifier: 0.01,
+  },
+  '64050': {
+    zip_code: '64050',
+    city: 'Independence',
+    state: 'MO',
+    material_modifier: 0.00,
+    labor_modifier: 0.13,
+    equipment_modifier: 0.01,
+  },
   '90210': {
     zip_code: '90210',
     city: 'Beverly Hills',
@@ -52,6 +76,66 @@ export const COMMON_REGIONAL_INDICES: Record<string, RegionalCostIndex> = {
     equipment_modifier: 0.04,
   },
 };
+
+export function resolveRegionalCostIndex(
+  zip?: string,
+  city?: string,
+  state?: string
+): RegionalCostIndex {
+  const cleanZip = (zip || '').trim().slice(0, 5);
+  if (cleanZip && COMMON_REGIONAL_INDICES[cleanZip]) {
+    return COMMON_REGIONAL_INDICES[cleanZip];
+  }
+
+  const lowerCity = (city || '').trim().toLowerCase();
+  if (lowerCity) {
+    const byCity = Object.values(COMMON_REGIONAL_INDICES).find(
+      (idx) => idx.city.toLowerCase() === lowerCity
+    );
+    if (byCity) return byCity;
+  }
+
+  if (cleanZip || lowerCity || state) {
+    return {
+      zip_code: cleanZip || '66208',
+      city: city?.trim() || 'Kansas City Metro',
+      state: state?.trim() || 'KS',
+      material_modifier: -0.01,
+      labor_modifier: 0.12,
+      equipment_modifier: 0.00,
+    };
+  }
+
+  return PRAIRIE_VILLAGE_COST_INDEX;
+}
+
+export function mapRawQualityToClass(rawQuality?: string): QualityClass {
+  if (!rawQuality) return 'Class 4';
+  const q = rawQuality.trim().toUpperCase();
+
+  if (q.includes('LUXURY') || q.includes('ESTATE') || q === 'A+' || q === 'Q1') return 'Class 1';
+  if (q.includes('CUSTOM') || q.includes('VERY GOOD') || q.startsWith('A') || q === 'Q2') return 'Class 2';
+  if (q.includes('GOOD') || q.startsWith('B') || q === 'Q3') return 'Class 3';
+  if (q.includes('AVERAGE') || q.includes('AVG') || q.startsWith('C') || q === 'Q4') return 'Class 4';
+  if (q.includes('FAIR') || q.startsWith('D') || q === 'Q5') return 'Class 5';
+  if (q.includes('POOR') || q.includes('LOW') || q.includes('MIN') || q.startsWith('E') || q === 'Q6') {
+    return 'Class 6';
+  }
+  return 'Class 4';
+}
+
+export function mapRawConditionToClass(rawCondition?: string): ConditionClass {
+  if (!rawCondition) return 'Class 3';
+  const c = rawCondition.trim().toUpperCase();
+
+  if (c.includes('NEW') || c === 'EX' || c.includes('EXCELLENT') || c === 'C1') return 'Class 1';
+  if (c.includes('VERY GOOD') || c === 'VG' || c.includes('REMODEL') || c === 'C2') return 'Class 2';
+  if (c.includes('GOOD') || c === 'GD' || c === 'C3') return 'Class 3';
+  if (c.includes('AVERAGE') || c.includes('AVG') || c === 'AV' || c === 'C4') return 'Class 4';
+  if (c.includes('FAIR') || c === 'FR' || c === 'PR' || c.includes('POOR') || c === 'C5') return 'Class 5';
+  if (c.includes('UNSOUND') || c.includes('SEVERE') || c === 'UN' || c === 'C6') return 'Class 6';
+  return 'Class 3';
+}
 
 /**
  * 27-Category Direct Cost Baseline Table (Derived from National Building Cost Manual & Craftsman Standards)

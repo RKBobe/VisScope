@@ -109,4 +109,92 @@ describe('Geometry & Parametric Topology Math', () => {
     expect(ansiResult.exterior_wall_buffer_sqft).toBe(51);
     expect(ansiResult.ansi_gla_sqft).toBe(651);
   });
+
+  it('excludes accessory structures from GLA and does not double-buffer exterior_footprint nodes', () => {
+    const mainFootprint: RoomNode = {
+      id: 'fp-1',
+      name: 'Detached SFR Unit',
+      level: 'First Floor',
+      node_type: 'exterior_footprint',
+      dimensions: { length_ft: 24, width_ft: 40, height_ft: 9 },
+      canvas_position: { x: 120, y: 120 },
+      openings: [],
+      floor_area_sqft: 960,
+      gross_wall_area_sqft: 1152,
+      net_wall_area_sqft: 1152,
+      quality_class: 'Class 5',
+      condition_class: 'Class 5',
+      is_class_overridden: false,
+      voice_transcript: '',
+      deficiencies: [],
+      photos: [],
+      cost_rollup: { base_replacement_cost: 120000, cost_to_cure: 0, room_total: 120000 },
+    };
+
+    const secondFloorFootprint: RoomNode = {
+      ...mainFootprint,
+      id: 'fp-2',
+      name: 'Second Floor',
+      level: 'Second Floor',
+      dimensions: { length_ft: 24, width_ft: 8, height_ft: 8 },
+      floor_area_sqft: 192,
+    };
+
+    const woodDeck: RoomNode = {
+      ...mainFootprint,
+      id: 'fp-deck',
+      name: 'Wood Deck w/ Roof',
+      level: 'First Floor',
+      node_type: 'accessory_structure',
+      exclude_from_gla: true,
+      dimensions: { length_ft: 19, width_ft: 8, height_ft: 8 },
+      floor_area_sqft: 152,
+    };
+
+    const ansiResult = calculateAnsiZ765GLA([mainFootprint, secondFloorFootprint, woodDeck], 6);
+    expect(ansiResult.interior_area_sqft).toBe(1152);
+    expect(ansiResult.exterior_wall_buffer_sqft).toBe(0);
+    expect(ansiResult.ansi_gla_sqft).toBe(1152);
+  });
+
+  it('includes finished Attic rooms in above-grade GLA and does not double-buffer exterior_footprint when mixed with interior rooms or double-count GBA', () => {
+    const firstFloorFootprint: RoomNode = {
+      id: 'fp-1',
+      name: 'First Floor Footprint',
+      level: 'First Floor',
+      node_type: 'exterior_footprint',
+      dimensions: { length_ft: 30, width_ft: 30, height_ft: 9 },
+      canvas_position: { x: 100, y: 100 },
+      openings: [],
+      floor_area_sqft: 900,
+      gross_wall_area_sqft: 1080,
+      net_wall_area_sqft: 1080,
+      quality_class: 'Class 4',
+      condition_class: 'Class 3',
+      is_class_overridden: false,
+      voice_transcript: '',
+      deficiencies: [],
+      photos: [],
+      cost_rollup: { base_replacement_cost: 100000, cost_to_cure: 0, room_total: 100000 },
+    };
+
+    const finishedAtticRoom: RoomNode = {
+      ...firstFloorFootprint,
+      id: 'attic-1',
+      name: 'Finished Attic Studio',
+      level: 'Attic',
+      node_type: 'interior_room',
+      exclude_from_gla: false,
+      dimensions: { length_ft: 20, width_ft: 15, height_ft: 8 },
+      canvas_position: { x: 800, y: 800 }, // Different canvas offset on Attic level
+      floor_area_sqft: 300,
+    };
+
+    const ansiResult = calculateAnsiZ765GLA([firstFloorFootprint, finishedAtticRoom], 6);
+    // First floor is exterior_footprint (900 SF, 0 buffer)
+    // Attic is interior_room 20x15 (300 SF, perimeter 70ft * 0.5 + 1 = 36 SF buffer)
+    expect(ansiResult.interior_area_sqft).toBe(1200);
+    expect(ansiResult.exterior_wall_buffer_sqft).toBe(36);
+    expect(ansiResult.ansi_gla_sqft).toBe(1236);
+  });
 });

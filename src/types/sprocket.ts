@@ -1,7 +1,8 @@
 export type QualityClass = 'Class 1' | 'Class 2' | 'Class 3' | 'Class 4' | 'Class 5' | 'Class 6';
 export type ConditionClass = 'Class 1' | 'Class 2' | 'Class 3' | 'Class 4' | 'Class 5' | 'Class 6';
 export type ScopeAction = 'Keep' | 'Remove' | 'Replace' | 'Add';
-export type FloorLevel = 'First Floor' | 'Basement' | 'Second Floor';
+export type FloorLevel = 'First Floor' | 'Second Floor' | 'Basement' | 'Attic';
+export type RoomNodeType = 'interior_room' | 'exterior_footprint' | 'accessory_structure';
 
 export type TradeCategory =
   | 'Excavation'
@@ -74,6 +75,10 @@ export interface RoomNode {
   id: string;
   name: string;
   level: FloorLevel;
+  node_type?: RoomNodeType;
+  structure_code?: string;
+  exclude_from_gla?: boolean;
+  ingested_from_source?: string;
   dimensions: RoomDimensions;
   canvas_position: Point2D; // In inches
   polygon_points?: Point2D[]; // Optional arbitrary polygon (inches) for L-shape or angled rooms
@@ -88,6 +93,89 @@ export interface RoomNode {
   deficiencies: DefectItem[];
   photos: RoomPhoto[];
   cost_rollup: RoomCostRollup;
+}
+
+export interface BuildingPermitRecord {
+  number: string;
+  amount: number;
+  type: string;
+  issue_date: string;
+  status: string;
+  pct_complete?: number;
+}
+
+export interface DwellingComponentRecord {
+  code?: string;
+  description: string;
+  units?: number;
+  pct?: number;
+  quality?: string;
+  year?: number;
+}
+
+export type IngestionDocumentType =
+  | 'johnson_county_prc'
+  | 'jackson_county_prc'
+  | 'architectural_floorplan'
+  | 'generic_pdf'
+  | 'image_sketch'
+  | 'meshengine_bundle'
+  | 'manual';
+
+export type IngestionGeometryMode = 'exterior_footprint_only' | 'clear_interior_rooms';
+
+export interface PropertyMetadata {
+  source_document_type?: IngestionDocumentType;
+  source_file_name?: string;
+  ingestion_mode?: IngestionGeometryMode;
+  ingestion_notes?: string;
+  parcel_id?: string;
+  quick_ref_id?: string;
+  tax_year?: number;
+  owner_name?: string;
+  legal_description?: string;
+  neighborhood_code?: string;
+  zoning?: string;
+  property_class?: string;
+  lot_size_sqft?: number;
+  lot_size_acres?: number;
+  year_built?: number;
+  architectural_style?: string;
+  stories?: string;
+  total_living_area_reported_sqft?: number;
+  main_floor_living_area_sqft?: number;
+  upper_floor_living_area_sqft?: number;
+  basement_type?: string;
+  basement_area_sqft?: number;
+  total_rooms_reported?: number;
+  bedrooms_reported?: number;
+  full_baths_reported?: number;
+  half_baths_reported?: number;
+  foundation_type?: string;
+  exterior_wall_type?: string;
+  roof_type?: string;
+  roofing_material?: string;
+  heating_cooling_description?: string;
+  plumbing_fixtures_count?: number;
+  plumbing_rough_ins_count?: number;
+  fireplaces_count?: number;
+  garage_description?: string;
+  quality_grade_raw?: string;
+  condition_cdu_raw?: string;
+  appraised_land_value?: number;
+  appraised_building_value?: number;
+  appraised_total_value?: number;
+  assessed_total_value?: number;
+  dwelling_rcn_value?: number;
+  percent_good?: number;
+  architect_firm?: string;
+  drawing_scheme?: string;
+  drawing_scale?: string;
+  usable_area_reported_sqft?: number;
+  rentable_area_reported_sqft?: number;
+  blueprint_underlay_data_uri?: string;
+  permits?: BuildingPermitRecord[];
+  components?: DwellingComponentRecord[];
 }
 
 export interface RegionalCostIndex {
@@ -135,6 +223,7 @@ export interface SprocketProject {
   cost_index: RegionalCostIndex;
   baseline_quality: QualityClass;
   baseline_condition: ConditionClass;
+  property_metadata?: PropertyMetadata;
   rooms: RoomNode[];
   summary: ProjectSummary;
   created_at: string;

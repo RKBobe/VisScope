@@ -119,7 +119,7 @@ export const RoomPalette: React.FC<RoomPaletteProps> = ({
             <Layers className="w-3.5 h-3.5 text-sky-400" />
             <span className="hidden sm:inline">Level:</span>
           </div>
-          {(['First Floor', 'Second Floor', 'Basement'] as FloorLevel[]).map((level) => {
+          {(['First Floor', 'Second Floor', 'Basement', 'Attic'] as FloorLevel[]).map((level) => {
             const isActive = currentLevel === level;
             const count = roomsCountPerLevel[level] || 0;
             return (

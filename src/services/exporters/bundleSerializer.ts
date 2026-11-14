@@ -51,7 +51,7 @@ export function generateFloorplanSVG(project: SprocketProject): string {
 
   <!-- Title / Legend Banner -->
   <g id="header-legend" transform="translate(${minX + 24}, ${minY + 36})">
-    <text class="header-text">${project.name} | ${project.address.street}, ${project.address.city}, ${project.address.state} ${project.address.zip}</text>
+    <text class="header-text">${escapeXml(project.name)} | ${escapeXml(project.address.street)}, ${escapeXml(project.address.city)}, ${escapeXml(project.address.state)} ${escapeXml(project.address.zip)}</text>
     <text y="20" class="room-sub">GLA: ${project.gla_sqft} SF (ANSI Z765) | GBA: ${project.gba_sqft} SF | Direct Cost: $${project.summary.direct_cost_subtotal.toLocaleString()}</text>
   </g>
 `;
@@ -77,13 +77,13 @@ export function generateFloorplanSVG(project: SprocketProject): string {
     const cy = ry + rh / 2;
 
     svgContent += `
-  <!-- Room: ${room.name} -->
-  <g id="room-${room.id}">
+  <!-- Room: ${escapeXml(room.name)} -->
+  <g id="room-${escapeXml(room.id)}">
     <rect class="room-rect" x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="4" />
     
     <!-- Centroid Badge -->
     <rect x="${cx - 65}" y="${cy - 30}" width="130" height="60" rx="6" fill="#0f172a" fill-opacity="0.9" stroke="#334155" stroke-width="1.5" />
-    <text class="room-label" x="${cx}" y="${cy - 12}">${room.name}</text>
+    <text class="room-label" x="${cx}" y="${cy - 12}">${escapeXml(room.name)}</text>
     <text class="room-sub" x="${cx}" y="${cy + 6}">${room.dimensions.length_ft}' x ${room.dimensions.width_ft}' (${room.floor_area_sqft} SF)</text>
     <text class="room-cost" x="${cx}" y="${cy + 22}">Est: $${room.cost_rollup.room_total.toLocaleString()}</text>
 `;
@@ -170,7 +170,7 @@ export function generateUadXmlPayload(project: SprocketProject): string {
   <PROPERTIES>
     <PROPERTY>
       <IDENTIFICATION>
-        <PropertyIdentifier>${project.project_id}</PropertyIdentifier>
+        <PropertyIdentifier>${escapeXml(project.project_id)}</PropertyIdentifier>
       </IDENTIFICATION>
       <ADDRESS>
         <AddressLineText>${escapeXml(project.address.street)}</AddressLineText>
@@ -192,7 +192,7 @@ export function generateUadXmlPayload(project: SprocketProject): string {
 `;
 
   // Group rooms by Level
-  const levels = ['First Floor', 'Second Floor', 'Basement'] as const;
+  const levels = ['First Floor', 'Second Floor', 'Basement', 'Attic'] as const;
   for (const level of levels) {
     const levelRooms = project.rooms.filter((r) => r.level === level);
     if (levelRooms.length === 0) continue;
@@ -207,7 +207,7 @@ export function generateUadXmlPayload(project: SprocketProject): string {
 
     for (const room of levelRooms) {
       xml += `              <ROOM>
-                <RoomIdentifier>${room.id}</RoomIdentifier>
+                <RoomIdentifier>${escapeXml(room.id)}</RoomIdentifier>
                 <RoomTypeName>${escapeXml(room.name)}</RoomTypeName>
                 <LengthFeetNumber>${room.dimensions.length_ft}</LengthFeetNumber>
                 <WidthFeetNumber>${room.dimensions.width_ft}</WidthFeetNumber>
@@ -223,9 +223,9 @@ export function generateUadXmlPayload(project: SprocketProject): string {
 
       for (const defect of room.deficiencies) {
         xml += `                  <DEFICIENCY>
-                    <DeficiencyIdentifier>${defect.id}</DeficiencyIdentifier>
+                    <DeficiencyIdentifier>${escapeXml(defect.id)}</DeficiencyIdentifier>
                     <TradeCategoryDescription>${escapeXml(defect.trade_category)}</TradeCategoryDescription>
-                    <ScopeActionType>${defect.action}</ScopeActionType>
+                    <ScopeActionType>${escapeXml(defect.action)}</ScopeActionType>
                     <ItemDescription>${escapeXml(defect.description)}</ItemDescription>
                     <QuantityNumber>${defect.quantity}</QuantityNumber>
                     <UnitOfMeasureType>${defect.unit}</UnitOfMeasureType>
