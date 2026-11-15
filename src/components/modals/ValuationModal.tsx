@@ -79,6 +79,11 @@ export const ValuationModal: React.FC<ValuationModalProps> = ({
               }}
               className="bg-slate-800 border border-slate-700 text-xs text-white rounded px-2.5 py-1 focus:border-sky-400 focus:outline-none"
             >
+              {!COMMON_REGIONAL_INDICES[costIndex.zip_code] && (
+                <option value={costIndex.zip_code}>
+                  {costIndex.zip_code} - {costIndex.city}, {costIndex.state} (Custom)
+                </option>
+              )}
               {Object.values(COMMON_REGIONAL_INDICES).map((idx) => (
                 <option key={idx.zip_code} value={idx.zip_code}>
                   {idx.zip_code} - {idx.city}, {idx.state}

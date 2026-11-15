@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { LowesB2BClient } from '../lowesClient';
+import { LowesB2BClient, getDefaultRetailerConnection } from '../lowesClient';
 import { exportLowesPickSheetCSV } from '../pickSheetExporter';
 import { RoomNode } from '../../../types/sprocket';
 
@@ -99,5 +99,139 @@ describe("Lowe's B2B Procurement Service", () => {
     expect(csv).toContain('Bay');
     expect(csv).toContain('Subtotal');
     expect(csv).toContain('Total Purchase Order');
+  });
+
+  it('matches dedicated catalog SKUs for Cabinets, Countertops, Roofing, and HVAC instead of Drywall', () => {
+    const mockRoom: RoomNode = {
+      id: 'room-trades',
+      name: 'Kitchen & Mech',
+      level: 'First Floor',
+      dimensions: { length_ft: 20, width_ft: 16, height_ft: 9 },
+      canvas_position: { x: 0, y: 0 },
+      openings: [],
+      floor_area_sqft: 320,
+      gross_wall_area_sqft: 648,
+      net_wall_area_sqft: 648,
+      quality_class: 'Class 4',
+      condition_class: 'Class 3',
+      is_class_overridden: false,
+      voice_transcript: '',
+      photos: [],
+      cost_rollup: { base_replacement_cost: 54400, cost_to_cure: 0, room_total: 54400 },
+      deficiencies: [
+        {
+          id: 'd-cab',
+          trade_category: 'Cabinets',
+          action: 'Replace',
+          description: 'Base cabinets',
+          quantity: 12,
+          unit: 'LF',
+          unit_price: 320,
+          total_cost: 3840,
+          is_verified: true,
+        },
+        {
+          id: 'd-cnt',
+          trade_category: 'Countertops',
+          action: 'Replace',
+          description: 'Quartz counters',
+          quantity: 32,
+          unit: 'SF',
+          unit_price: 85,
+          total_cost: 2720,
+          is_verified: true,
+        },
+        {
+          id: 'd-rof',
+          trade_category: 'Roofing',
+          action: 'Replace',
+          description: 'Architectural shingles',
+          quantity: 100,
+          unit: 'SF',
+          unit_price: 8.53,
+          total_cost: 853,
+          is_verified: true,
+        },
+        {
+          id: 'd-hvc',
+          trade_category: 'HVAC',
+          action: 'Replace',
+          description: 'Split AC unit',
+          quantity: 1,
+          unit: 'EA',
+          unit_price: 14500,
+          total_cost: 14500,
+          is_verified: true,
+        },
+      ],
+    };
+
+    const order = client.generateProcurementOrder([mockRoom], '66061');
+    const skus = order.line_items.map((li) => li.sku);
+    expect(skus).toContain('LW-CAB-08');
+    expect(skus).toContain('LW-CNT-09');
+    expect(skus).toContain('LW-ROF-12');
+    expect(skus).toContain('LW-HVC-11');
+    expect(skus).not.toContain('LW-DRY-01');
+  });
+
+  it('resolves dedicated Lowe\'s stores for all supported regional preset ZIPs', () => {
+    for (const zip of ['66208', '66061', '64133', '64050', '90210', '75001', '60601', '33101']) {
+      const store = client.getStoreByZip(zip);
+      expect(store.store_id).not.toBe('0100');
+    }
+  });
+
+  it('supports switching retailers, pricing tiers, custom discounts, and product search URLs', () => {
+    const mockRoom: RoomNode = {
+      id: 'room-multi',
+      name: 'Living Room',
+      level: 'First Floor',
+      dimensions: { length_ft: 20, width_ft: 16, height_ft: 9 },
+      canvas_position: { x: 0, y: 0 },
+      openings: [],
+      floor_area_sqft: 320,
+      gross_wall_area_sqft: 648,
+      net_wall_area_sqft: 648,
+      quality_class: 'Class 4',
+      condition_class: 'Class 3',
+      is_class_overridden: false,
+      voice_transcript: '',
+      photos: [],
+      cost_rollup: { base_replacement_cost: 54400, cost_to_cure: 0, room_total: 54400 },
+      deficiencies: [
+        {
+          id: 'd-dry',
+          trade_category: 'Drywall',
+          action: 'Replace',
+          description: 'Replace 64 SF drywall',
+          quantity: 64,
+          unit: 'SF',
+          unit_price: 3.5,
+          total_cost: 224,
+          is_verified: true,
+        },
+      ],
+    };
+
+    const hdConfig = getDefaultRetailerConnection('homedepot');
+    const hdOrder = client.generateProcurementOrder([mockRoom], '66208', hdConfig);
+    expect(hdOrder.retailer_id).toBe('homedepot');
+    expect(hdOrder.store_name).toContain('Home Depot');
+    expect(hdOrder.line_items[0].sku).toMatch(/^HD-/);
+    expect(hdOrder.line_items[0].product_url).toContain('homedepot.com/s/');
+
+    const menardsRetail = {
+      ...getDefaultRetailerConnection('menards'),
+      price_tier: 'retail' as const,
+      custom_discount_pct: 10,
+      account_id: 'MN-PRO-42',
+    };
+    const menardsOrder = client.generateProcurementOrder([mockRoom], '66208', menardsRetail);
+    expect(menardsOrder.retailer_id).toBe('menards');
+    expect(menardsOrder.account_id).toBe('MN-PRO-42');
+    expect(menardsOrder.line_items[0].sku).toMatch(/^MN-/);
+    // Drywall retail 15.48 * 0.96 multiplier * 0.90 (10% discount) = 13.37
+    expect(menardsOrder.line_items[0].unit_price).toBeCloseTo(13.37, 2);
   });
 });

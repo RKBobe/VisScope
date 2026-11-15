@@ -27,7 +27,7 @@ const TRADE_KEYWORD_MAP: Array<{
     defaultUnit: 'SF',
   },
   {
-    keywords: ['paint', 'painting', 'primer', 'touch up', 'repaint'],
+    keywords: ['paint', 'painting', 'primer', 'touch up', 'repaint', 'stain', 'interior wall', 'interior walls', 'wall', 'walls'],
     trade: 'Painting',
     defaultUnit: 'SF',
   },
@@ -88,7 +88,17 @@ const TRADE_KEYWORD_MAP: Array<{
  */
 function normalizeAction(rawAction: string): ScopeAction {
   const lower = rawAction.toLowerCase();
-  if (lower === 'replace' || lower === 'fix' || lower === 'repair' || lower === 'patch') {
+  if (
+    lower === 'replace' ||
+    lower === 'fix' ||
+    lower === 'repair' ||
+    lower === 'patch' ||
+    lower === 'paint' ||
+    lower === 'repaint' ||
+    lower === 'prime' ||
+    lower === 'stain' ||
+    lower === 'refinish'
+  ) {
     return 'Replace';
   }
   if (lower === 'remove' || lower === 'demo' || lower === 'tear out') {
@@ -134,9 +144,9 @@ export function parseVoiceDefectTranscript(transcript: string): ParsedVoiceDefec
 
   const clean = transcript.trim();
 
-  // Pattern: /(replace|remove|install|fix|repair|patch|demo|add|keep)\s+(\d+(\.\d+)?)\s*(sq\s*ft|square\s*feet|sf|linear\s*feet|lf|feet|ft|units?|ea)?\s*(of\s*)?([a-z0-9\s\-]+)/i
+  // Pattern: /(replace|remove|install|fix|repair|patch|demo|add|keep|paint|...)\s+(\d+(\.\d+)?)\s*(...)?\s*(of\s*)?([a-z0-9\s\-]+)/i
   const regex =
-    /\b(replace|remove|install|fix|repair|patch|demo|add|put\s+in|mount|keep)\s+(\d+(?:\.\d+)?)\s*(sq\s*ft|square\s*feet|sf|linear\s*feet|lf|feet|ft|units?|ea)?\s*(?:of\s+)?([a-z0-9\s\-]+)/i;
+    /\b(replace|remove|install|fix|repair|patch|demo|add|put\s+in|mount|keep|paint|repaint|prime|stain|refinish)\s+(\d+(?:\.\d+)?)\s*(sq\s*ft|square\s*feet|sf|linear\s*feet|lf|feet|ft|units?|ea|allow(?:ance)?)?\s*(?:of\s+)?([a-z0-9\s\-]+)/i;
 
   const match = clean.match(regex);
 
@@ -146,21 +156,24 @@ export function parseVoiceDefectTranscript(transcript: string): ParsedVoiceDefec
     const rawUnit = match[3];
     const rawItem = match[4].trim();
 
+    const isPaintVerb = /^(paint|repaint|prime|stain|refinish)$/i.test(rawAction);
     const action = normalizeAction(rawAction);
-    let matchedTrade: TradeCategory = 'Finish Carpentry';
-    let unit = normalizeUnit(rawUnit);
-    let confidence = 0.85;
+    let matchedTrade: TradeCategory = isPaintVerb ? 'Painting' : 'Finish Carpentry';
+    let unit = rawUnit ? normalizeUnit(rawUnit) : isPaintVerb ? 'SF' : normalizeUnit(rawUnit);
+    let confidence = isPaintVerb ? 0.92 : 0.85;
 
-    // Detect trade category from item text
-    const lowerItem = rawItem.toLowerCase();
-    for (const mapping of TRADE_KEYWORD_MAP) {
-      if (mapping.keywords.some((kw) => lowerItem.includes(kw))) {
-        matchedTrade = mapping.trade;
-        if (!rawUnit) {
-          unit = mapping.defaultUnit;
+    // Detect trade category from item text (unless verb explicitly denotes painting)
+    if (!isPaintVerb) {
+      const lowerItem = rawItem.toLowerCase();
+      for (const mapping of TRADE_KEYWORD_MAP) {
+        if (mapping.keywords.some((kw) => lowerItem.includes(kw))) {
+          matchedTrade = mapping.trade;
+          if (!rawUnit) {
+            unit = mapping.defaultUnit;
+          }
+          confidence = 0.95;
+          break;
         }
-        confidence = 0.95;
-        break;
       }
     }
 
@@ -176,13 +189,16 @@ export function parseVoiceDefectTranscript(transcript: string): ParsedVoiceDefec
   }
 
   // Fallback heuristic: check if action + item without explicit quantity
-  const simpleActionMatch = clean.match(/\b(replace|remove|install|fix|repair|demo|add|paint)\s+(?:the\s+)?([a-z0-9\s\-]+)/i);
+  const simpleActionMatch = clean.match(
+    /\b(replace|remove|install|fix|repair|demo|add|keep|paint|repaint|prime|stain|refinish)\s+(?:the\s+)?([a-z0-9\s\-]+)/i
+  );
   if (simpleActionMatch) {
     const rawAction = simpleActionMatch[1];
     const rawItem = simpleActionMatch[2].trim();
+    const isPaintVerb = /^(paint|repaint|prime|stain|refinish)$/i.test(rawAction);
     const action = normalizeAction(rawAction);
     let matchedTrade: TradeCategory = 'Painting';
-    let unit: 'SF' | 'LF' | 'EA' | 'ALLOWANCE' = 'EA';
+    let unit: 'SF' | 'LF' | 'EA' | 'ALLOWANCE' = isPaintVerb ? 'SF' : 'EA';
     let confidence = 0.72;
 
     const lowerItem = rawItem.toLowerCase();
@@ -258,13 +274,13 @@ export function createDefectFromVoice(
   parsed: ParsedVoiceDefect,
   costIndex: RegionalCostIndex
 ): DefectItem {
-  const unitPrice = getAdjustedUnitPrice(
-    parsed.trade_category,
-    parsed.unit,
-    costIndex
-  );
+  const unitPrice =
+    parsed.action === 'Keep'
+      ? 0
+      : getAdjustedUnitPrice(parsed.trade_category, parsed.unit, costIndex);
 
-  const totalCost = Number((parsed.quantity * unitPrice).toFixed(2));
+  const totalCost =
+    parsed.action === 'Keep' ? 0 : Number((parsed.quantity * unitPrice).toFixed(2));
 
   return {
     id: `defect-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,

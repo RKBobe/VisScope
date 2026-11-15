@@ -433,7 +433,9 @@ export function calculateRoomCostRollup(
   let cost_to_cure = 0;
   if (deficiencies && deficiencies.length > 0) {
     for (const defect of deficiencies) {
-      cost_to_cure += defect.total_cost;
+      if (defect.is_verified !== false && defect.action !== 'Keep') {
+        cost_to_cure += defect.total_cost;
+      }
     }
   } else {
     // Fallback: estimate from condition class depreciation

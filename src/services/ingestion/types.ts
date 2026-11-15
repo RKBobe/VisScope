@@ -34,4 +34,5 @@ export interface RawDocumentPayload {
   text?: string;
   rawBytes?: Uint8Array;
   pageImages?: string[];
+  imageAspectRatio?: number;
 }

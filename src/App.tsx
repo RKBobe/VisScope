@@ -9,11 +9,15 @@ import {
   PropertyMetadata,
   QualityClass,
   ConditionClass,
+  RetailerConnectionConfig,
 } from './types/sprocket';
 import {
   loadSavedProject,
   saveProject,
   createInitialProject,
+  listSavedProjects,
+  createBlankProject,
+  deleteProjectFromStore,
 } from './services/storage/projectStore';
 import {
   calculateRoomFloorArea,
@@ -26,6 +30,7 @@ import {
   calculateRoomCostRollup,
   calculateProjectSummary,
   resolveRegionalCostIndex,
+  getAdjustedUnitPrice,
 } from './services/math/valuation';
 import { applyIngestionToProject } from './services/ingestion/documentIngestor';
 import { IngestionResult } from './services/ingestion/types';
@@ -40,6 +45,7 @@ import { PropertyRecordModal } from './components/modals/PropertyRecordModal';
 
 export const App: React.FC = () => {
   const [project, setProject] = useState<SprocketProject>(createInitialProject());
+  const [savedProjects, setSavedProjects] = useState<SprocketProject[]>([]);
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [currentLevel, setCurrentLevel] = useState<FloorLevel>('First Floor');
   const [showAnsiBuffer, setShowAnsiBuffer] = useState<boolean>(true);
@@ -54,12 +60,15 @@ export const App: React.FC = () => {
   useEffect(() => {
     loadSavedProject().then((loaded) => {
       setProject(loaded);
+      listSavedProjects().then(setSavedProjects);
     });
   }, []);
 
   // Save to IndexedDB whenever project updates
   useEffect(() => {
-    saveProject(project);
+    saveProject(project).then(() => {
+      listSavedProjects().then(setSavedProjects);
+    });
   }, [project]);
 
   // Active room instance
@@ -91,19 +100,49 @@ export const App: React.FC = () => {
   // Helper to re-derive all room-level and project-level rollups
   const recomputeProject = useCallback(
     (rooms: RoomNode[], costIndex: RegionalCostIndex = project.cost_index): SprocketProject => {
+      const indexChanged =
+        costIndex.zip_code !== project.cost_index.zip_code ||
+        costIndex.material_modifier !== project.cost_index.material_modifier ||
+        costIndex.labor_modifier !== project.cost_index.labor_modifier ||
+        costIndex.equipment_modifier !== project.cost_index.equipment_modifier;
+
       const updatedRooms = rooms.map((room) => {
-        const floor_area_sqft = calculateRoomFloorArea(room.dimensions, room.polygon_points);
+        const prevRoom = project.rooms.find((pr) => pr.id === room.id);
+        const dimensionsChanged =
+          !prevRoom ||
+          prevRoom.dimensions.length_ft !== room.dimensions.length_ft ||
+          prevRoom.dimensions.width_ft !== room.dimensions.width_ft ||
+          prevRoom.polygon_points !== room.polygon_points;
+
+        const floor_area_sqft =
+          room.ingested_from_source && !dimensionsChanged && room.floor_area_sqft > 0
+            ? room.floor_area_sqft
+            : calculateRoomFloorArea(room.dimensions, room.polygon_points);
+
         const wallAreas = calculateWallAreas(room.dimensions, room.openings);
+
+        const updatedDeficiencies = indexChanged
+          ? room.deficiencies.map((def) => {
+              if (def.action === 'Keep') {
+                return { ...def, unit_price: 0, total_cost: 0 };
+              }
+              const unit_price = getAdjustedUnitPrice(def.trade_category, def.unit, costIndex);
+              const total_cost = Number((def.quantity * unit_price).toFixed(2));
+              return { ...def, unit_price, total_cost };
+            })
+          : room.deficiencies;
+
         const cost_rollup = calculateRoomCostRollup(
           floor_area_sqft,
           room.quality_class,
           room.condition_class,
-          room.deficiencies,
+          updatedDeficiencies,
           costIndex
         );
 
         return {
           ...room,
+          deficiencies: updatedDeficiencies,
           floor_area_sqft,
           gross_wall_area_sqft: wallAreas.gross_wall_area_sqft,
           net_wall_area_sqft: wallAreas.net_wall_area_sqft,
@@ -128,15 +167,20 @@ export const App: React.FC = () => {
     [project]
   );
 
-  // Update room position on canvas
+  // Update room position on canvas (and keep ANSI GLA synced)
   const handleUpdateRoomPosition = (roomId: string, newPos: Point2D) => {
-    const updated = project.rooms.map((r) =>
-      r.id === roomId ? { ...r, canvas_position: newPos } : r
-    );
-    setProject((prev) => ({
-      ...prev,
-      rooms: updated,
-    }));
+    setProject((prev) => {
+      const updated = prev.rooms.map((r) =>
+        r.id === roomId ? { ...r, canvas_position: newPos } : r
+      );
+      const ansi = calculateAnsiZ765GLA(updated, 6);
+      return {
+        ...prev,
+        rooms: updated,
+        gla_sqft: ansi.ansi_gla_sqft,
+        updated_at: new Date().toISOString(),
+      };
+    });
   };
 
   // Update room dimensions from canvas resize handle
@@ -233,6 +277,41 @@ export const App: React.FC = () => {
     setProject(recomputeProject(project.rooms, newIndex));
   };
 
+  // Switch saved project
+  const handleSelectProject = (selected: SprocketProject) => {
+    setProject(selected);
+    setActiveRoomId(null);
+    setCurrentLevel('First Floor');
+  };
+
+  // Create new blank project in multi-project IndexedDB store
+  const handleCreateNewProject = () => {
+    const next = createBlankProject(`Inspection #${savedProjects.length + 1}`);
+    setProject(next);
+    setActiveRoomId(null);
+    setCurrentLevel('First Floor');
+  };
+
+  // Delete project from IndexedDB store
+  const handleDeleteProject = async (projectId: string) => {
+    const remaining = await deleteProjectFromStore(projectId);
+    setSavedProjects(remaining);
+    if (projectId === project.project_id && remaining[0]) {
+      setProject(remaining[0]);
+      setActiveRoomId(null);
+      setCurrentLevel('First Floor');
+    }
+  };
+
+  // Persist user's chosen supply retailer configuration on active project
+  const handleUpdateSupplyRetailer = (config: RetailerConnectionConfig) => {
+    setProject((prev) => ({
+      ...prev,
+      supply_retailer: config,
+      updated_at: new Date().toISOString(),
+    }));
+  };
+
   // Apply ingested document to project state
   const handleApplyIngestion = (result: IngestionResult, mode: IngestionGeometryMode) => {
     const nextProject = applyIngestionToProject(project, result, mode);
@@ -277,6 +356,10 @@ export const App: React.FC = () => {
       {/* Top Header */}
       <Header
         project={project}
+        savedProjects={savedProjects}
+        onSelectProject={handleSelectProject}
+        onCreateNewProject={handleCreateNewProject}
+        onDeleteProject={handleDeleteProject}
         onOpenValuation={() => setIsValuationOpen(true)}
         onOpenProcurement={() => setIsProcurementOpen(true)}
         onOpenIngestion={() => setIsIngestionOpen(true)}
@@ -314,6 +397,8 @@ export const App: React.FC = () => {
       <RoomInspectionDrawer
         room={activeRoom}
         costIndex={project.cost_index}
+        baselineQuality={project.baseline_quality}
+        baselineCondition={project.baseline_condition}
         onClose={() => setActiveRoomId(null)}
         onUpdateRoom={handleUpdateRoom}
         onDeleteRoom={handleDeleteRoom}
@@ -327,11 +412,12 @@ export const App: React.FC = () => {
         onSelectCostIndex={handleSelectCostIndex}
       />
 
-      {/* Lowe's B2B Pro Procurement Modal */}
+      {/* Materials Supply Pro Procurement Modal */}
       <LowesProcurementModal
         project={project}
         isOpen={isProcurementOpen}
         onClose={() => setIsProcurementOpen(false)}
+        onUpdateSupplyRetailer={handleUpdateSupplyRetailer}
       />
 
       {/* Document Ingestion & Prepopulation Modal */}

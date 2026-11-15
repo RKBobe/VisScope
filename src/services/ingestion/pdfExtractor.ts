@@ -110,3 +110,53 @@ export async function extractPdfContent(bytes: Uint8Array): Promise<ExtractedPdf
     isGarbledEncoding,
   };
 }
+
+/**
+ * Extracts embedded XMP/EXIF/tEXt ASCII metadata and image dimensions from PNG or JPEG bytes.
+ */
+export function extractImageMetadataAndDimensions(bytes: Uint8Array): {
+  embeddedText: string;
+  width?: number;
+  height?: number;
+} {
+  let width: number | undefined;
+  let height: number | undefined;
+
+  // Check PNG signature + IHDR chunk (width/height at bytes 16..23)
+  if (
+    bytes.length >= 24 &&
+    bytes[0] === 0x89 &&
+    bytes[1] === 0x50 &&
+    bytes[2] === 0x4e &&
+    bytes[3] === 0x47
+  ) {
+    const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    width = view.getUint32(16, false);
+    height = view.getUint32(20, false);
+  } else if (bytes.length >= 4 && bytes[0] === 0xff && bytes[1] === 0xd8) {
+    // JPEG SOF0 (0xC0) / SOF2 (0xC2) marker scan
+    let offset = 2;
+    while (offset + 9 < bytes.length) {
+      if (bytes[offset] !== 0xff) {
+        offset++;
+        continue;
+      }
+      const marker = bytes[offset + 1];
+      if (marker === 0xc0 || marker === 0xc2) {
+        height = (bytes[offset + 5] << 8) | bytes[offset + 6];
+        width = (bytes[offset + 7] << 8) | bytes[offset + 8];
+        break;
+      }
+      if (marker === 0xd8 || marker === 0xd9 || marker === 0x00) {
+        offset += 2;
+        continue;
+      }
+      const segmentLength = (bytes[offset + 2] << 8) | bytes[offset + 3];
+      if (segmentLength < 2) break;
+      offset += 2 + segmentLength;
+    }
+  }
+
+  const embeddedText = extractPrintableAsciiFromBytes(bytes);
+  return { embeddedText, width, height };
+}

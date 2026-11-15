@@ -209,6 +209,25 @@ export interface ProjectSummary {
   post_renovation_value: number; // Replacement Cost New (RCN)
 }
 
+export type SupplyRetailerId =
+  | 'lowes'
+  | 'homedepot'
+  | 'menards'
+  | 'build_ferguson'
+  | 'abc_supply'
+  | 'custom';
+
+export interface RetailerConnectionConfig {
+  retailer_id: SupplyRetailerId;
+  retailer_name: string;
+  account_id?: string;
+  api_endpoint?: string;
+  api_key?: string;
+  price_tier: 'contractor_pro' | 'retail';
+  custom_discount_pct?: number;
+  store_search_url_template: string;
+}
+
 export interface SprocketProject {
   project_id: string;
   name: string;
@@ -223,6 +242,7 @@ export interface SprocketProject {
   cost_index: RegionalCostIndex;
   baseline_quality: QualityClass;
   baseline_condition: ConditionClass;
+  supply_retailer?: RetailerConnectionConfig;
   property_metadata?: PropertyMetadata;
   rooms: RoomNode[];
   summary: ProjectSummary;
@@ -230,7 +250,7 @@ export interface SprocketProject {
   updated_at: string;
 }
 
-// Lowe's B2B Procurement Contracts
+// Multi-Retailer & B2B Procurement Contracts
 export interface LowesProductSKU {
   sku: string;
   model: string;
@@ -262,9 +282,14 @@ export interface ProcurementLineItem {
   order_units: number; // Packaged units rounded up
   unit_price: number;
   extended_cost: number;
+  product_url?: string;
 }
 
 export interface ProcurementOrder {
+  retailer_id?: SupplyRetailerId;
+  retailer_name?: string;
+  account_id?: string;
+  price_tier?: 'contractor_pro' | 'retail';
   store_id: string;
   store_name: string;
   store_address: string;

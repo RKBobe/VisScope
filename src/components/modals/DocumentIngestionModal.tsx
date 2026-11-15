@@ -3,6 +3,7 @@ import { IngestionGeometryMode } from '../../types/sprocket';
 import {
   getBuiltInSampleIngestion,
   ingestDocumentFile,
+  ingestDocumentTextOrBuffer,
 } from '../../services/ingestion/documentIngestor';
 import { IngestionResult } from '../../services/ingestion/types';
 import {
@@ -34,6 +35,8 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<IngestionResult | null>(null);
   const [selectedMode, setSelectedMode] = useState<IngestionGeometryMode>('exterior_footprint_only');
+  const [showRawTextOverride, setShowRawTextOverride] = useState(false);
+  const [rawTextInput, setRawTextInput] = useState('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!isOpen) return null;
@@ -45,6 +48,7 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
       const parsed = await ingestDocumentFile(file);
       setResult(parsed);
       setSelectedMode(parsed.recommended_mode);
+      setRawTextInput(parsed.raw_extracted_text || '');
     } catch (err: any) {
       setError(err?.message || 'Failed to parse document');
     } finally {
@@ -59,6 +63,28 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
     const parsed = getBuiltInSampleIngestion(sampleId);
     setResult(parsed);
     setSelectedMode(parsed.recommended_mode);
+    setRawTextInput(parsed.raw_extracted_text || '');
+  };
+
+  const handleReanalyzeText = async () => {
+    if (!result || !rawTextInput.trim()) return;
+    try {
+      setIsProcessing(true);
+      setError(null);
+      const parsed = await ingestDocumentTextOrBuffer({
+        fileName: result.metadata.source_file_name || 'manual_input.txt',
+        text: rawTextInput,
+        pageImages: result.metadata.blueprint_underlay_data_uri
+          ? [result.metadata.blueprint_underlay_data_uri]
+          : [],
+      });
+      setResult(parsed);
+      setSelectedMode(parsed.recommended_mode);
+    } catch (err: any) {
+      setError(err?.message || 'Failed to analyze text');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const activePreviewRooms = result
@@ -115,21 +141,22 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".pdf,.png,.jpg,.jpeg,.webp,.json,.xml"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.json,.xml,.zip"
                 className="hidden"
                 onChange={(e) => {
                   const file = e.target.files?.[0];
                   if (file) handleFileUpload(file);
+                  e.target.value = '';
                 }}
               />
               <div className="w-11 h-11 rounded-full bg-sky-950/80 border border-sky-800 flex items-center justify-center text-sky-400 group-hover:scale-105 transition mb-2.5">
                 <Upload className="w-5 h-5" />
               </div>
               <span className="text-xs font-bold text-white">
-                {isProcessing ? 'Extracting Document...' : 'Drop Property PDF, Blueprint, or Image'}
+                {isProcessing ? 'Extracting Document...' : 'Drop Property PDF, Blueprint, or Bundle'}
               </span>
               <span className="text-[11px] text-slate-400 mt-1">
-                Supports County PRCs (.PDF), Architectural CAD Sets (.PDF), Sketches (.PNG/.JPG), or Manifests (.JSON)
+                Supports County PRCs (.PDF), Architectural CAD Sets (.PDF), Sketches (.PNG/.JPG), UAD XML (.XML), or MeshEngine Bundles (.JSON/.ZIP)
               </span>
             </div>
 
@@ -407,6 +434,48 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
                     ))}
                   </div>
                 </div>
+              </div>
+
+              {/* Scanned Text / Room Dimensions Override */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                    <FileText className="w-3.5 h-3.5 text-sky-400" />
+                    Scanned Text / Room Dimensions Override
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowRawTextOverride(!showRawTextOverride)}
+                    className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold"
+                  >
+                    {showRawTextOverride ? 'Hide Text Editor' : 'Paste / Edit Room Text'}
+                  </button>
+                </div>
+
+                {showRawTextOverride && (
+                  <div className="mt-2.5 space-y-2">
+                    <textarea
+                      rows={4}
+                      value={rawTextInput}
+                      onChange={(e) => setRawTextInput(e.target.value)}
+                      placeholder="Paste County PRC text or room list e.g. Living Room: 20x16, Kitchen: 18x14, Primary Bedroom: 16x14"
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-sky-500"
+                    />
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-slate-500">
+                        Enter 2+ rooms as &quot;Name: LxW&quot; (e.g. Kitchen 18x14) or raw County PRC text to extract geometry.
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleReanalyzeText}
+                        disabled={isProcessing || !rawTextInput.trim()}
+                        className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white px-3 py-1 rounded-lg text-xs font-semibold transition"
+                      >
+                        Re-Analyze Text
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}

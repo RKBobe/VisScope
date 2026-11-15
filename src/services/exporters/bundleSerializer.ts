@@ -177,7 +177,26 @@ export function generateUadXmlPayload(project: SprocketProject): string {
         <CityName>${escapeXml(project.address.city)}</CityName>
         <StateCode>${escapeXml(project.address.state)}</StateCode>
         <PostalCode>${escapeXml(project.address.zip)}</PostalCode>
-      </ADDRESS>
+      </ADDRESS>`;
+
+  if (project.property_metadata) {
+    const m = project.property_metadata;
+    xml += `
+      <PROPERTY_METADATA>
+        ${m.parcel_id ? `<ParcelIdentifier>${escapeXml(m.parcel_id)}</ParcelIdentifier>` : ''}
+        ${m.quick_ref_id ? `<QuickRefIdentifier>${escapeXml(m.quick_ref_id)}</QuickRefIdentifier>` : ''}
+        ${m.owner_name ? `<OwnerName>${escapeXml(m.owner_name)}</OwnerName>` : ''}
+        ${m.legal_description ? `<LegalDescriptionText>${escapeXml(m.legal_description)}</LegalDescriptionText>` : ''}
+        ${m.year_built !== undefined ? `<YearBuiltNumber>${m.year_built}</YearBuiltNumber>` : ''}
+        ${m.architectural_style ? `<ArchitecturalStyleText>${escapeXml(m.architectural_style)}</ArchitecturalStyleText>` : ''}
+        ${m.lot_size_sqft !== undefined ? `<LotSizeSquareFeetNumber>${m.lot_size_sqft}</LotSizeSquareFeetNumber>` : ''}
+        ${m.appraised_total_value !== undefined ? `<AppraisedTotalValueAmount>${m.appraised_total_value}</AppraisedTotalValueAmount>` : ''}
+        ${m.dwelling_rcn_value !== undefined ? `<DwellingRCNAmount>${m.dwelling_rcn_value}</DwellingRCNAmount>` : ''}
+        ${m.source_document_type ? `<SourceDocumentType>${escapeXml(m.source_document_type)}</SourceDocumentType>` : ''}
+      </PROPERTY_METADATA>`;
+  }
+
+  xml += `
       <STRUCTURE>
         <STRUCTURE_ANALYSIS>
           <GrossLivingAreaSquareFeetNumber>${project.gla_sqft}</GrossLivingAreaSquareFeetNumber>
@@ -209,6 +228,10 @@ export function generateUadXmlPayload(project: SprocketProject): string {
       xml += `              <ROOM>
                 <RoomIdentifier>${escapeXml(room.id)}</RoomIdentifier>
                 <RoomTypeName>${escapeXml(room.name)}</RoomTypeName>
+                <RoomNodeType>${escapeXml(room.node_type || 'interior_room')}</RoomNodeType>
+                <ExcludeFromGLAIndicator>${Boolean(room.exclude_from_gla)}</ExcludeFromGLAIndicator>
+                <CanvasPositionX>${room.canvas_position.x}</CanvasPositionX>
+                <CanvasPositionY>${room.canvas_position.y}</CanvasPositionY>
                 <LengthFeetNumber>${room.dimensions.length_ft}</LengthFeetNumber>
                 <WidthFeetNumber>${room.dimensions.width_ft}</WidthFeetNumber>
                 <CeilingHeightFeetNumber>${room.dimensions.height_ft}</CeilingHeightFeetNumber>
@@ -237,7 +260,25 @@ export function generateUadXmlPayload(project: SprocketProject): string {
       }
 
       xml += `                </DEFICIENCIES>
-              </ROOM>
+`;
+
+      if (room.photos && room.photos.length > 0) {
+        xml += `                <PHOTOS>
+`;
+        for (const photo of room.photos) {
+          xml += `                  <PHOTO>
+                    <PhotoIdentifier>${escapeXml(photo.id)}</PhotoIdentifier>
+                    <DirectionType>${escapeXml(photo.direction)}</DirectionType>
+                    <AzimuthDegreesNumber>${photo.azimuth_deg}</AzimuthDegreesNumber>
+                    <CapturedDatetime>${escapeXml(photo.timestamp)}</CapturedDatetime>
+                  </PHOTO>
+`;
+        }
+        xml += `                </PHOTOS>
+`;
+      }
+
+      xml += `              </ROOM>
 `;
     }
 
@@ -287,13 +328,45 @@ export async function createMeshEngineBundle(project: SprocketProject): Promise<
   const uadXml = generateUadXmlPayload(project);
   zip.file('uad_inspection_payload.xml', uadXml);
 
-  // 4. lowes_materials_buy_sheet.csv
+  // 4. Materials pick-sheet CSV (Lowe's or selected supply retailer)
   const procurementOrder = lowesClient.generateProcurementOrder(
     project.rooms,
-    project.address.zip
+    project.cost_index?.zip_code || project.address.zip,
+    project.supply_retailer
   );
   const lowesCsv = exportLowesPickSheetCSV(procurementOrder);
   zip.file('lowes_materials_buy_sheet.csv', lowesCsv);
+
+  // 5. photos/ directory for captured cardinal & defect photos
+  for (const room of project.rooms) {
+    if (!room.photos || room.photos.length === 0) continue;
+    const safeRoomId = room.id.replace(/[^a-zA-Z0-9_-]/g, '_');
+    for (const photo of room.photos) {
+      if (!photo.file_uri) continue;
+      if (photo.file_uri.startsWith('data:image/svg+xml')) {
+        const commaIdx = photo.file_uri.indexOf(',');
+        if (commaIdx !== -1) {
+          const rawSvg = photo.file_uri.slice(commaIdx + 1);
+          const isBase64 = photo.file_uri.slice(0, commaIdx).includes(';base64');
+          if (isBase64) {
+            zip.file(`photos/${safeRoomId}_${photo.direction}.svg`, rawSvg, { base64: true });
+          } else {
+            try {
+              zip.file(`photos/${safeRoomId}_${photo.direction}.svg`, decodeURIComponent(rawSvg));
+            } catch {
+              zip.file(`photos/${safeRoomId}_${photo.direction}.svg`, rawSvg);
+            }
+          }
+        }
+      } else {
+        const match = photo.file_uri.match(/^data:image\/([a-zA-Z0-9+.-]+);base64,(.+)$/);
+        if (match) {
+          const ext = match[1] === 'jpeg' ? 'jpg' : match[1];
+          zip.file(`photos/${safeRoomId}_${photo.direction}.${ext}`, match[2], { base64: true });
+        }
+      }
+    }
+  }
 
   // Generate downloadable Blob
   return await zip.generateAsync({ type: 'blob' });

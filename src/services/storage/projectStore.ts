@@ -1,9 +1,14 @@
 import { get, set } from 'idb-keyval';
 import { SprocketProject, RoomNode } from '../../types/sprocket';
-import { PRAIRIE_VILLAGE_COST_INDEX, calculateProjectSummary } from '../math/valuation';
+import {
+  PRAIRIE_VILLAGE_COST_INDEX,
+  calculateProjectSummary,
+  calculateRoomCostRollup,
+} from '../math/valuation';
 import { calculateAnsiZ765GLA, calculateGBA } from '../math/geometry';
 
 const STORAGE_KEY = 'datamesh_sprocket_active_project';
+const STORAGE_LIST_KEY = 'datamesh_sprocket_projects_v1';
 
 export const INITIAL_ROOMS: RoomNode[] = [
   {
@@ -166,6 +171,54 @@ export function createInitialProject(): SprocketProject {
   };
 }
 
+export function createBlankProject(name?: string): SprocketProject {
+  const costIndex = PRAIRIE_VILLAGE_COST_INDEX;
+  const now = new Date().toISOString();
+  const starterRoom: RoomNode = {
+    id: `room-${Date.now()}`,
+    name: 'Main Living Area',
+    level: 'First Floor',
+    dimensions: { length_ft: 20, width_ft: 16, height_ft: 9 },
+    canvas_position: { x: 120, y: 120 },
+    openings: [],
+    floor_area_sqft: 320,
+    gross_wall_area_sqft: 648,
+    net_wall_area_sqft: 648,
+    quality_class: 'Class 4',
+    condition_class: 'Class 3',
+    is_class_overridden: false,
+    voice_transcript: '',
+    deficiencies: [],
+    photos: [],
+    cost_rollup: calculateRoomCostRollup(320, 'Class 4', 'Class 3', [], costIndex),
+  };
+
+  const rooms = [starterRoom];
+  const ansi = calculateAnsiZ765GLA(rooms, 6);
+  const gba = calculateGBA(rooms);
+  const summary = calculateProjectSummary(rooms, costIndex);
+
+  return {
+    project_id: `PRJ-${Date.now().toString().slice(-6)}`,
+    name: name?.trim() || 'New Field Inspection',
+    address: {
+      street: '100 Main St',
+      city: 'Overland Park',
+      state: 'KS',
+      zip: '66212',
+    },
+    gla_sqft: ansi.ansi_gla_sqft,
+    gba_sqft: gba,
+    cost_index: costIndex,
+    baseline_quality: 'Class 4',
+    baseline_condition: 'Class 3',
+    rooms,
+    summary,
+    created_at: now,
+    updated_at: now,
+  };
+}
+
 export async function loadSavedProject(): Promise<SprocketProject> {
   try {
     const saved = await get<SprocketProject>(STORAGE_KEY);
@@ -180,11 +233,57 @@ export async function loadSavedProject(): Promise<SprocketProject> {
 
 export async function saveProject(project: SprocketProject): Promise<void> {
   try {
-    await set(STORAGE_KEY, {
+    const updatedProject: SprocketProject = {
       ...project,
       updated_at: new Date().toISOString(),
-    });
+    };
+    await set(STORAGE_KEY, updatedProject);
+
+    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
+    existingMap[updatedProject.project_id] = updatedProject;
+    await set(STORAGE_LIST_KEY, existingMap);
   } catch (err) {
     console.warn('Could not save project to IndexedDB:', err);
+  }
+}
+
+export async function listSavedProjects(): Promise<SprocketProject[]> {
+  try {
+    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
+    const entries = Object.values(existingMap);
+    if (entries.length > 0) {
+      return entries.sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
+    }
+    const active = await loadSavedProject();
+    existingMap[active.project_id] = active;
+    await set(STORAGE_LIST_KEY, existingMap);
+    return [active];
+  } catch (err) {
+    console.warn('Could not list projects from IndexedDB:', err);
+    return [createInitialProject()];
+  }
+}
+
+export async function deleteProjectFromStore(
+  projectId: string
+): Promise<SprocketProject[]> {
+  try {
+    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
+    delete existingMap[projectId];
+    let remaining = Object.values(existingMap).sort(
+      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+    );
+    if (remaining.length === 0) {
+      const fresh = createInitialProject();
+      existingMap[fresh.project_id] = fresh;
+      remaining = [fresh];
+    }
+    await set(STORAGE_LIST_KEY, existingMap);
+    return remaining;
+  } catch (err) {
+    console.warn('Could not delete project from IndexedDB:', err);
+    return [createInitialProject()];
   }
 }

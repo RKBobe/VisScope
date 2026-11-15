@@ -114,4 +114,52 @@ describe('Valuation & Craftsman Cost Engine', () => {
     expect(mapRawConditionToClass('PR')).toBe('Class 5');
     expect(mapRawConditionToClass('4-AVERAGE')).toBe('Class 4');
   });
+
+  it('excludes unverified and Keep defects from room cost_to_cure', () => {
+    const defects = [
+      {
+        id: 'def-verified',
+        trade_category: 'Drywall' as const,
+        action: 'Replace' as const,
+        description: 'Drywall patch',
+        quantity: 50,
+        unit: 'SF' as const,
+        unit_price: 3.5,
+        total_cost: 175,
+        is_verified: true,
+      },
+      {
+        id: 'def-unverified',
+        trade_category: 'Painting' as const,
+        action: 'Replace' as const,
+        description: 'Unverified painting item',
+        quantity: 100,
+        unit: 'SF' as const,
+        unit_price: 3.0,
+        total_cost: 300,
+        is_verified: false,
+      },
+      {
+        id: 'def-keep',
+        trade_category: 'Finish Carpentry' as const,
+        action: 'Keep' as const,
+        description: 'Existing trim',
+        quantity: 40,
+        unit: 'LF' as const,
+        unit_price: 10.0,
+        total_cost: 400,
+        is_verified: true,
+      },
+    ];
+
+    const rollup = calculateRoomCostRollup(
+      200,
+      'Class 4',
+      'Class 3',
+      defects,
+      PRAIRIE_VILLAGE_COST_INDEX
+    );
+
+    expect(rollup.cost_to_cure).toBe(175);
+  });
 });

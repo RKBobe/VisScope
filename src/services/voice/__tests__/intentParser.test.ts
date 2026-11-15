@@ -54,4 +54,21 @@ describe('Xact-Scope Voice Intent Parser', () => {
     expect(defect.unit_price).toBeGreaterThan(0);
     expect(defect.total_cost).toBe(Number((40 * defect.unit_price).toFixed(2)));
   });
+
+  it('parses painting phrases with square feet quantities and trade category', () => {
+    const parsed = parseVoiceDefectTranscript('Paint 200 sq ft wall');
+    expect(parsed).not.toBeNull();
+    expect(parsed?.action).toBe('Replace');
+    expect(parsed?.quantity).toBe(200);
+    expect(parsed?.unit).toBe('SF');
+    expect(parsed?.trade_category).toBe('Painting');
+  });
+
+  it('assigns zero cost when action is Keep', () => {
+    const parsed = parseVoiceDefectTranscript('Keep 120 sq ft of hardwood flooring')!;
+    expect(parsed.action).toBe('Keep');
+    const defect = createDefectFromVoice(parsed, PRAIRIE_VILLAGE_COST_INDEX);
+    expect(defect.unit_price).toBe(0);
+    expect(defect.total_cost).toBe(0);
+  });
 });

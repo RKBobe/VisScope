@@ -1,10 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   ingestDocumentTextOrBuffer,
   getBuiltInSampleIngestion,
   applyIngestionToProject,
 } from '../documentIngestor';
+import { lookupCountyParcel } from '../countyGisClient';
 import { createInitialProject } from '../../storage/projectStore';
+import { generateUadXmlPayload } from '../../exporters/bundleSerializer';
 
 const JOHNSON_COUNTY_PRC_SAMPLE_TEXT = `
 Parcel ID: 046-097-35-0-10-01-009.00-0 Quick Ref: R27504 Tax Year: 2026
@@ -239,5 +241,66 @@ describe('Document Ingestion & Tiered Editor Prepopulation Engine', () => {
     expect(result.recommended_mode).toBe('exterior_footprint_only');
     expect(result.interior_rooms.some((r) => r.name.includes('Bookstore'))).toBe(false);
     expect(result.exterior_footprint_rooms[0].floor_area_sqft).toBe(2400);
+  });
+
+  it('round-trips UAD 3.6 XML payloads back into rooms, dimensions, and deficiencies', async () => {
+    const initial = createInitialProject();
+    const xml = generateUadXmlPayload(initial);
+
+    const result = await ingestDocumentTextOrBuffer({
+      fileName: 'uad_inspection_payload.xml',
+      text: xml,
+    });
+
+    expect(result.document_type).toBe('meshengine_bundle');
+    expect(result.address.street).toBe(initial.address.street);
+    expect(result.address.zip).toBe(initial.address.zip);
+    expect(result.interior_rooms.length).toBe(initial.rooms.length);
+    expect(result.interior_rooms[0].name).toBe(initial.rooms[0].name);
+    expect(result.interior_rooms[0].deficiencies.length).toBe(initial.rooms[0].deficiencies.length);
+  });
+
+  it('extracts explicit Room LxW dimensions from scanned/manual text into interior_rooms', async () => {
+    const result = await ingestDocumentTextOrBuffer({
+      fileName: 'Sketch_Notes.txt',
+      text: 'Property Address: 7550 Windsor St, Prairie Village, KS 66208\nLiving Room: 20x16\nKitchen: 18x14\nGarage: 22x20',
+    });
+
+    expect(result.has_clear_interior_rooms).toBe(true);
+    expect(result.recommended_mode).toBe('clear_interior_rooms');
+    expect(result.interior_rooms.length).toBe(3);
+    expect(result.interior_rooms[0].name).toBe('Living Room');
+    expect(result.interior_rooms[0].floor_area_sqft).toBe(320);
+    expect(result.interior_rooms[1].name).toBe('Kitchen');
+    expect(result.interior_rooms[1].floor_area_sqft).toBe(252);
+    expect(result.interior_rooms[2].exclude_from_gla).toBe(true);
+  });
+
+  it('resolves KC Metro parcels and synthesizes baseline county records offline via lookupCountyParcel', async () => {
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    try {
+      const known = await lookupCountyParcel({
+        parcelId: 'R27504',
+        street: '318 E Park St',
+        state: 'KS',
+        zip: '66061',
+      });
+      expect(known.found).toBe(true);
+      expect(known.source).toBe('kc_metro_registry');
+      expect(known.metadata?.parcel_id).toBe('046-097-35-0-10-01-009.00-0');
+      expect(known.metadata?.appraised_total_value).toBe(166000);
+
+      const generic = await lookupCountyParcel({
+        street: '9912 Metcalf Ave',
+        city: 'Overland Park',
+        state: 'KS',
+        zip: '66212',
+      });
+      expect(generic.found).toBe(true);
+      expect(generic.metadata?.parcel_id).toBeTruthy();
+      expect(generic.metadata?.appraised_total_value).toBeGreaterThan(0);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 });

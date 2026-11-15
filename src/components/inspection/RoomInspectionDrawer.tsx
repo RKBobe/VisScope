@@ -29,11 +29,14 @@ import {
   DoorOpen,
   Eye,
   RefreshCw,
+  Upload,
 } from 'lucide-react';
 
 interface RoomInspectionDrawerProps {
   room: RoomNode | null;
   costIndex: RegionalCostIndex;
+  baselineQuality?: QualityClass;
+  baselineCondition?: ConditionClass;
   onClose: () => void;
   onUpdateRoom: (updated: RoomNode) => void;
   onDeleteRoom: (roomId: string) => void;
@@ -68,15 +71,16 @@ const QUICK_VOICE_TEMPLATES = [
 export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
   room,
   costIndex,
+  baselineQuality,
+  baselineCondition,
   onClose,
   onUpdateRoom,
   onDeleteRoom,
 }) => {
-  if (!room) return null;
-
   // Voice Push-to-Talk State
   const [isRecording, setIsRecording] = useState(false);
-  const [transcript, setTranscript] = useState(room.voice_transcript || '');
+  const [transcript, setTranscript] = useState(room?.voice_transcript || '');
+  const [manualTranscriptInput, setManualTranscriptInput] = useState('');
   const [parsedDefect, setParsedDefect] = useState<ParsedVoiceDefect | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
 
@@ -96,11 +100,79 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
   const [openHeight, setOpenHeight] = useState(80);
   const [openOffset, setOpenOffset] = useState(24);
 
+  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
+  const [previewPhoto, setPreviewPhoto] = useState<RoomPhoto | null>(null);
+
+  // Live Camera (getUserMedia) + Hardware Compass (DeviceOrientationEvent) State
+  type PhotoSlotDirection = 'North' | 'South' | 'East' | 'West' | 'Defect';
+  const [cameraSlot, setCameraSlot] = useState<PhotoSlotDirection | null>(null);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [liveAzimuth, setLiveAzimuth] = useState<number | null>(null);
+  const [manualAzimuthOverride, setManualAzimuthOverride] = useState<number>(0);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const cameraRequestIdRef = useRef(0);
+
+  const stopCameraStream = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+  };
+
   useEffect(() => {
-    setTranscript(room.voice_transcript || '');
+    if (!cameraSlot) {
+      cameraRequestIdRef.current++;
+      stopCameraStream();
+      setLiveAzimuth(null);
+      setCameraError(null);
+      return;
+    }
+
+    if (videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+
+    const handleOrientation = (event: DeviceOrientationEvent) => {
+      const webkitHeading = (
+        event as unknown as { webkitCompassHeading?: number }
+      ).webkitCompassHeading;
+      if (typeof webkitHeading === 'number' && Number.isFinite(webkitHeading)) {
+        setLiveAzimuth(Math.round(((webkitHeading % 360) + 360) % 360));
+      } else if (typeof event.alpha === 'number' && Number.isFinite(event.alpha)) {
+        setLiveAzimuth(Math.round(((360 - event.alpha) % 360 + 360) % 360));
+      }
+    };
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('deviceorientation', handleOrientation);
+    }
+
+    return () => {
+      stopCameraStream();
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('deviceorientation', handleOrientation);
+      }
+    };
+  }, [cameraSlot]);
+
+  useEffect(() => {
+    setTranscript(room?.voice_transcript || '');
+    setManualTranscriptInput('');
     setParsedDefect(null);
     setVoiceError(null);
-  }, [room.id]);
+    setPreviewPhoto(null);
+    setCameraSlot(null);
+    if (isRecording) {
+      speechService.stopListening();
+      setIsRecording(false);
+    }
+  }, [room?.id]);
+
+  if (!room) return null;
 
   // Push-to-Talk Toggle
   const toggleSpeech = () => {
@@ -109,6 +181,14 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
       setIsRecording(false);
     } else {
       setVoiceError(null);
+      if (!speechService.checkSupport()) {
+        setVoiceError(
+          'Browser Web Speech API is unavailable. Type a phrase below or tap a sample phrase.'
+        );
+        setIsRecording(false);
+        return;
+      }
+      setIsRecording(true);
       speechService.startListening(
         (text, isFinal) => {
           setTranscript(text);
@@ -126,7 +206,23 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
           setIsRecording(false);
         }
       );
-      setIsRecording(true);
+    }
+  };
+
+  const handleParseManualTranscript = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = manualTranscriptInput.trim();
+    if (!trimmed) return;
+    setVoiceError(null);
+    setTranscript(trimmed);
+    const parsed = parseVoiceDefectTranscript(trimmed);
+    if (parsed) {
+      setParsedDefect(parsed);
+    } else {
+      setParsedDefect(null);
+      setVoiceError(
+        'Could not extract a scope line item. Try e.g. "Replace 40 lf of baseboard" or use Manual Item.'
+      );
     }
   };
 
@@ -201,29 +297,34 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
     onUpdateRoom({ ...room, openings: updated });
   };
 
-  const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
-  const [previewPhoto, setPreviewPhoto] = useState<RoomPhoto | null>(null);
+  // Mobile / Live Camera Photo Capture Handler
+  const SLOT_DEFAULT_AZIMUTH: Record<PhotoSlotDirection, number> = {
+    North: 0,
+    East: 90,
+    South: 180,
+    West: 270,
+    Defect: 45,
+  };
 
-  // Mobile Camera / Photo Capture Handler
   const handlePhotoCapture = async (
-    direction: 'North' | 'South' | 'East' | 'West' | 'Defect',
-    file: File
+    direction: PhotoSlotDirection,
+    file: File,
+    customAzimuth?: number
   ) => {
     try {
-      const dataUri = await compressImage(file, 1600, 0.85);
-      const azimuthMap: Record<string, number> = {
-        North: 0,
-        East: 90,
-        South: 180,
-        West: 270,
-        Defect: 45,
-      };
+      const timestamp = new Date().toISOString();
+      const azimuth_deg = customAzimuth ?? liveAzimuth ?? SLOT_DEFAULT_AZIMUTH[direction] ?? 0;
+      const dataUri = await compressImage(file, 1600, 0.85, {
+        direction,
+        azimuth_deg,
+        timestamp,
+      });
 
       const newPhoto: RoomPhoto = {
         id: `photo-${Date.now()}`,
         direction,
-        azimuth_deg: azimuthMap[direction] || 0,
-        timestamp: new Date().toISOString(),
+        azimuth_deg,
+        timestamp,
         file_uri: dataUri,
       };
 
@@ -242,8 +343,93 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
     onUpdateRoom({ ...room, photos: updated });
   };
 
-  const triggerCamera = (direction: string) => {
-    fileInputRefs.current[direction]?.click();
+  const closeCameraModal = () => {
+    cameraRequestIdRef.current++;
+    stopCameraStream();
+    setCameraSlot(null);
+    setCameraError(null);
+  };
+
+  const triggerCamera = async (direction: PhotoSlotDirection) => {
+    const defaultAz = SLOT_DEFAULT_AZIMUTH[direction] ?? 0;
+    setManualAzimuthOverride(defaultAz);
+
+    if (
+      typeof navigator === 'undefined' ||
+      !navigator.mediaDevices ||
+      typeof navigator.mediaDevices.getUserMedia !== 'function'
+    ) {
+      fileInputRefs.current[direction]?.click();
+      return;
+    }
+
+    // Request compass sensor permission on iOS Safari if required during user gesture
+    try {
+      const devOrient =
+        typeof DeviceOrientationEvent !== 'undefined'
+          ? (DeviceOrientationEvent as unknown as {
+              requestPermission?: () => Promise<'granted' | 'denied'>;
+            })
+          : undefined;
+      if (devOrient && typeof devOrient.requestPermission === 'function') {
+        void devOrient.requestPermission().catch(() => {});
+      }
+    } catch {
+      // Ignore sensor permission errors
+    }
+
+    stopCameraStream();
+    setCameraError(null);
+    setCameraSlot(direction);
+    const reqId = ++cameraRequestIdRef.current;
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false,
+      });
+      if (reqId !== cameraRequestIdRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+    } catch (err) {
+      if (reqId !== cameraRequestIdRef.current) return;
+      const reason =
+        err instanceof Error ? err.message : 'Camera permission denied or no camera found.';
+      setCameraError(reason);
+    }
+  };
+
+  const handleCaptureFrame = async () => {
+    if (!cameraSlot || !videoRef.current || !streamRef.current) return;
+    const video = videoRef.current;
+    const width = video.videoWidth || 1280;
+    const height = video.videoHeight || 720;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(video, 0, 0, width, height);
+    const effectiveAzimuth = liveAzimuth ?? manualAzimuthOverride;
+    const activeSlot = cameraSlot;
+
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob((b) => resolve(b), 'image/jpeg', 0.92)
+    );
+    if (!blob) return;
+
+    const capturedFile = new File([blob], `${room.id}_${activeSlot}_${Date.now()}.jpg`, {
+      type: 'image/jpeg',
+    });
+    closeCameraModal();
+    await handlePhotoCapture(activeSlot, capturedFile, effectiveAzimuth);
   };
 
   return (
@@ -331,13 +517,16 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
               <label className="text-xs text-slate-400 block mb-1">Length (ft)</label>
               <input
                 type="number"
-                min="6"
-                max="60"
+                min="1"
+                max="200"
                 value={room.dimensions.length_ft}
                 onChange={(e) =>
                   onUpdateRoom({
                     ...room,
-                    dimensions: { ...room.dimensions, length_ft: Number(e.target.value) },
+                    dimensions: {
+                      ...room.dimensions,
+                      length_ft: Math.max(1, Number(e.target.value) || 1),
+                    },
                   })
                 }
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-sm text-white focus:border-sky-400 focus:outline-none font-mono"
@@ -347,13 +536,16 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
               <label className="text-xs text-slate-400 block mb-1">Width (ft)</label>
               <input
                 type="number"
-                min="6"
-                max="60"
+                min="1"
+                max="200"
                 value={room.dimensions.width_ft}
                 onChange={(e) =>
                   onUpdateRoom({
                     ...room,
-                    dimensions: { ...room.dimensions, width_ft: Number(e.target.value) },
+                    dimensions: {
+                      ...room.dimensions,
+                      width_ft: Math.max(1, Number(e.target.value) || 1),
+                    },
                   })
                 }
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-sm text-white focus:border-sky-400 focus:outline-none font-mono"
@@ -363,13 +555,17 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
               <label className="text-xs text-slate-400 block mb-1">Height (ft)</label>
               <input
                 type="number"
-                min="7"
-                max="24"
+                min="6"
+                max="40"
+                step="0.5"
                 value={room.dimensions.height_ft}
                 onChange={(e) =>
                   onUpdateRoom({
                     ...room,
-                    dimensions: { ...room.dimensions, height_ft: Number(e.target.value) },
+                    dimensions: {
+                      ...room.dimensions,
+                      height_ft: Math.max(6, Number(e.target.value) || 8),
+                    },
                   })
                 }
                 className="w-full bg-slate-900 border border-slate-700 rounded px-2.5 py-1.5 text-sm text-white focus:border-sky-400 focus:outline-none font-mono"
@@ -396,10 +592,27 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
 
         {/* Quality & Condition Ratings */}
         <div className="bg-slate-800/50 border border-slate-700/80 rounded-xl p-4">
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center gap-1.5">
-            <DollarSign className="w-4 h-4 text-emerald-400" />
-            Craftsman Quality & Condition
-          </h3>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+              <DollarSign className="w-4 h-4 text-emerald-400" />
+              Craftsman Quality & Condition
+            </h3>
+            {room.is_class_overridden && baselineQuality && baselineCondition && (
+              <button
+                onClick={() =>
+                  onUpdateRoom({
+                    ...room,
+                    quality_class: baselineQuality,
+                    condition_class: baselineCondition,
+                    is_class_overridden: false,
+                  })
+                }
+                className="text-[11px] text-sky-400 hover:text-sky-300 font-semibold"
+              >
+                Reset to Baseline
+              </button>
+            )}
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -517,6 +730,23 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
             </div>
           )}
 
+          {/* Quick Typed Phrase Fallback */}
+          <form onSubmit={handleParseManualTranscript} className="flex gap-1.5 mb-3">
+            <input
+              type="text"
+              value={manualTranscriptInput}
+              onChange={(e) => setManualTranscriptInput(e.target.value)}
+              placeholder='Type phrase (e.g. "Paint 200 sq ft wall")'
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-sky-400 focus:outline-none"
+            />
+            <button
+              type="submit"
+              className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+            >
+              Parse
+            </button>
+          </form>
+
           {/* Quick Voice Simulation Buttons */}
           <div className="space-y-1">
             <span className="text-[10px] uppercase tracking-wider text-slate-500 font-bold block mb-1">
@@ -527,7 +757,9 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                 <button
                   key={idx}
                   onClick={() => {
+                    setVoiceError(null);
                     setTranscript(tmpl);
+                    setManualTranscriptInput(tmpl);
                     const parsed = parseVoiceDefectTranscript(tmpl);
                     if (parsed) setParsedDefect(parsed);
                   }}
@@ -584,12 +816,20 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                   >
                     <option value="Finish Carpentry">Finish Carpentry</option>
                     <option value="Drywall">Drywall</option>
+                    <option value="Interior Wall Finish">Interior Wall Finish</option>
                     <option value="Carpet, Flooring">Carpet, Flooring</option>
                     <option value="Painting">Painting</option>
                     <option value="Plumbing Fixtures">Plumbing Fixtures</option>
                     <option value="Electrical">Electrical</option>
                     <option value="Doors & Windows">Doors & Windows</option>
                     <option value="Cabinets">Cabinets</option>
+                    <option value="Countertops">Countertops</option>
+                    <option value="HVAC">HVAC</option>
+                    <option value="Roofing">Roofing</option>
+                    <option value="Framing">Framing</option>
+                    <option value="Exterior Finish">Exterior Finish</option>
+                    <option value="Foundation">Foundation</option>
+                    <option value="Excavation">Excavation</option>
                   </select>
                 </div>
               </div>
@@ -610,8 +850,10 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                   <label className="text-[10px] text-slate-400 block mb-0.5">Quantity</label>
                   <input
                     type="number"
+                    min="0.1"
+                    step="any"
                     value={manualQty}
-                    onChange={(e) => setManualQty(Number(e.target.value))}
+                    onChange={(e) => setManualQty(Math.max(0.1, Number(e.target.value) || 1))}
                     className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
                   />
                 </div>
@@ -754,8 +996,9 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                   <label className="text-[10px] text-slate-400 block mb-0.5">Width (in)</label>
                   <input
                     type="number"
+                    min="1"
                     value={openWidth}
-                    onChange={(e) => setOpenWidth(Number(e.target.value))}
+                    onChange={(e) => setOpenWidth(Math.max(1, Number(e.target.value) || 1))}
                     className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
                   />
                 </div>
@@ -763,8 +1006,9 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                   <label className="text-[10px] text-slate-400 block mb-0.5">Height (in)</label>
                   <input
                     type="number"
+                    min="1"
                     value={openHeight}
-                    onChange={(e) => setOpenHeight(Number(e.target.value))}
+                    onChange={(e) => setOpenHeight(Math.max(1, Number(e.target.value) || 1))}
                     className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
                   />
                 </div>
@@ -772,8 +1016,9 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                   <label className="text-[10px] text-slate-400 block mb-0.5">Offset (in)</label>
                   <input
                     type="number"
+                    min="0"
                     value={openOffset}
-                    onChange={(e) => setOpenOffset(Number(e.target.value))}
+                    onChange={(e) => setOpenOffset(Math.max(0, Number(e.target.value) || 0))}
                     className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white"
                   />
                 </div>
@@ -1001,6 +1246,123 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                 <Camera className="w-3.5 h-3.5" />
                 Retake
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Live Camera Viewfinder & Compass Azimuth Modal */}
+      {cameraSlot && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={closeCameraModal}
+        >
+          <div
+            className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden shadow-2xl flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-3.5 bg-slate-800/90 border-b border-slate-700 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-sky-400" />
+                <span className="text-xs font-bold text-white">
+                  Live Camera — {cameraSlot === 'Defect' ? 'Defect Photo' : `${cameraSlot} Wall`}
+                </span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-sky-950 text-sky-300 border border-sky-800">
+                  {liveAzimuth !== null
+                    ? `${liveAzimuth}° Live Compass`
+                    : `${manualAzimuthOverride}° Manual Azimuth`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={closeCameraModal}
+                className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-700 transition"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="bg-slate-950 relative aspect-video flex items-center justify-center overflow-hidden">
+              {cameraError ? (
+                <div className="p-6 text-center space-y-3">
+                  <p className="text-xs text-amber-300 font-semibold">
+                    Live Camera Unavailable: {cameraError}
+                  </p>
+                  <p className="text-[11px] text-slate-400">
+                    Use the file picker fallback below to upload or capture an image from disk.
+                  </p>
+                </div>
+              ) : (
+                <video
+                  ref={(el) => {
+                    videoRef.current = el;
+                    if (el && streamRef.current && el.srcObject !== streamRef.current) {
+                      el.srcObject = streamRef.current;
+                    }
+                  }}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                />
+              )}
+            </div>
+
+            <div className="p-3.5 bg-slate-900 border-t border-slate-800 space-y-3">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <label className="text-slate-400 font-mono flex items-center gap-1.5 shrink-0">
+                  <Compass className="w-3.5 h-3.5 text-sky-400" />
+                  Azimuth Fallback (°):
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="359"
+                  value={liveAzimuth ?? manualAzimuthOverride}
+                  disabled={liveAzimuth !== null}
+                  onChange={(e) => setManualAzimuthOverride(Number(e.target.value) || 0)}
+                  className="flex-1 accent-sky-500"
+                />
+                <input
+                  type="number"
+                  min="0"
+                  max="359"
+                  value={liveAzimuth ?? manualAzimuthOverride}
+                  disabled={liveAzimuth !== null}
+                  onChange={(e) =>
+                    setManualAzimuthOverride(
+                      Math.max(0, Math.min(359, Number(e.target.value) || 0))
+                    )
+                  }
+                  className="w-16 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-right text-white font-mono"
+                />
+              </div>
+
+              <div className="flex items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const slot = cameraSlot;
+                    closeCameraModal();
+                    if (slot) fileInputRefs.current[slot]?.click();
+                  }}
+                  className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  Upload File Instead
+                </button>
+
+                {!cameraError && (
+                  <button
+                    type="button"
+                    onClick={handleCaptureFrame}
+                    className="bg-sky-600 hover:bg-sky-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 shadow-lg transition"
+                  >
+                    <Camera className="w-4 h-4" />
+                    Capture Frame ({liveAzimuth ?? manualAzimuthOverride}°)
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>

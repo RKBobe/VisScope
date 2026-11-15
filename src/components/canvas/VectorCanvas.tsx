@@ -377,12 +377,13 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
             height={ansiData.exterior_hull_bounds.maxY - ansiData.exterior_hull_bounds.minY + 96}
             opacity={0.18}
             preserveAspectRatio="xMidYMid meet"
+            pointerEvents="none"
           />
         )}
 
         {/* ANSI Z765 Outer Shell Buffer Visualization */}
         {showAnsiBuffer && ansiData.exterior_hull_bounds && (
-          <g id="ansi-hull-layer">
+          <g id="ansi-hull-layer" pointerEvents="none">
             <rect
               x={ansiData.exterior_hull_bounds.minX}
               y={ansiData.exterior_hull_bounds.minY}
@@ -418,6 +419,7 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
             stroke="#ec4899"
             strokeWidth="1.5"
             strokeDasharray="4,4"
+            pointerEvents="none"
           />
         ))}
 
@@ -449,24 +451,42 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                 (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
               }}
             >
-              {/* Room Body Box */}
-              <rect
-                x={rx}
-                y={ry}
-                width={rw}
-                height={rh}
-                rx="4"
-                strokeDasharray={isAccessory ? '6,4' : undefined}
-                className={`transition-colors duration-150 ${
-                  isSelected
-                    ? 'fill-slate-800 stroke-sky-400 stroke-[3]'
-                    : isAccessory
-                    ? 'fill-amber-950/30 stroke-amber-500/80 stroke-[2] hover:stroke-amber-400 hover:fill-amber-900/30'
-                    : isExteriorFootprint
-                    ? 'fill-emerald-950/35 stroke-emerald-400/90 stroke-[2.5] hover:stroke-emerald-300 hover:fill-emerald-900/35'
-                    : 'fill-slate-900/90 stroke-slate-600 stroke-[2] hover:stroke-slate-400 hover:fill-slate-800/80'
-                }`}
-              />
+              {/* Room Body Box / Polygon */}
+              {room.polygon_points && room.polygon_points.length >= 3 ? (
+                <polygon
+                  points={room.polygon_points
+                    .map((pt) => `${rx + pt.x},${ry + pt.y}`)
+                    .join(' ')}
+                  strokeDasharray={isAccessory ? '6,4' : undefined}
+                  className={`transition-colors duration-150 ${
+                    isSelected
+                      ? 'fill-slate-800 stroke-sky-400 stroke-[3]'
+                      : isAccessory
+                      ? 'fill-amber-950/30 stroke-amber-500/80 stroke-[2] hover:stroke-amber-400 hover:fill-amber-900/30'
+                      : isExteriorFootprint
+                      ? 'fill-emerald-950/35 stroke-emerald-400/90 stroke-[2.5] hover:stroke-emerald-300 hover:fill-emerald-900/35'
+                      : 'fill-slate-900/90 stroke-slate-600 stroke-[2] hover:stroke-slate-400 hover:fill-slate-800/80'
+                  }`}
+                />
+              ) : (
+                <rect
+                  x={rx}
+                  y={ry}
+                  width={rw}
+                  height={rh}
+                  rx="4"
+                  strokeDasharray={isAccessory ? '6,4' : undefined}
+                  className={`transition-colors duration-150 ${
+                    isSelected
+                      ? 'fill-slate-800 stroke-sky-400 stroke-[3]'
+                      : isAccessory
+                      ? 'fill-amber-950/30 stroke-amber-500/80 stroke-[2] hover:stroke-amber-400 hover:fill-amber-900/30'
+                      : isExteriorFootprint
+                      ? 'fill-emerald-950/35 stroke-emerald-400/90 stroke-[2.5] hover:stroke-emerald-300 hover:fill-emerald-900/35'
+                      : 'fill-slate-900/90 stroke-slate-600 stroke-[2] hover:stroke-slate-400 hover:fill-slate-800/80'
+                  }`}
+                />
+              )}
 
               {/* Footprint / Non-GLA Corner Tag */}
               {(isExteriorFootprint || isAccessory) && (
@@ -487,6 +507,11 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                 const side = opening.wall_side;
                 const offset = opening.offset_in;
                 const oWidth = opening.width_in;
+                const isDoor = opening.type === 'door';
+                const isCased = opening.type === 'cased_opening';
+                const openingStroke = isDoor ? '#fbbf24' : isCased ? '#94a3b8' : '#60a5fa';
+                const openingWidth = isDoor ? 3 : isCased ? 2.5 : 4;
+                const openingDash = isCased ? '3,3' : undefined;
 
                 let ox = rx;
                 let oy = ry;
@@ -496,8 +521,8 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                   oy = ry;
                   return (
                     <g key={opening.id}>
-                      <line x1={ox} y1={oy} x2={ox + oWidth} y2={oy} stroke={opening.type === 'door' ? '#fbbf24' : '#60a5fa'} strokeWidth={opening.type === 'door' ? 3 : 4} strokeLinecap="round" />
-                      {opening.type === 'door' && (
+                      <line x1={ox} y1={oy} x2={ox + oWidth} y2={oy} stroke={openingStroke} strokeWidth={openingWidth} strokeDasharray={openingDash} strokeLinecap={isCased ? 'butt' : 'round'} />
+                      {isDoor && (
                         <path d={`M ${ox} ${oy} A ${oWidth} ${oWidth} 0 0 1 ${ox + oWidth} ${oy - oWidth}`} fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeDasharray="3,3" />
                       )}
                     </g>
@@ -507,8 +532,8 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                   oy = ry + rh;
                   return (
                     <g key={opening.id}>
-                      <line x1={ox} y1={oy} x2={ox + oWidth} y2={oy} stroke={opening.type === 'door' ? '#fbbf24' : '#60a5fa'} strokeWidth={opening.type === 'door' ? 3 : 4} strokeLinecap="round" />
-                      {opening.type === 'door' && (
+                      <line x1={ox} y1={oy} x2={ox + oWidth} y2={oy} stroke={openingStroke} strokeWidth={openingWidth} strokeDasharray={openingDash} strokeLinecap={isCased ? 'butt' : 'round'} />
+                      {isDoor && (
                         <path d={`M ${ox} ${oy} A ${oWidth} ${oWidth} 0 0 0 ${ox + oWidth} ${oy + oWidth}`} fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeDasharray="3,3" />
                       )}
                     </g>
@@ -518,8 +543,8 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                   oy = ry + offset;
                   return (
                     <g key={opening.id}>
-                      <line x1={ox} y1={oy} x2={ox} y2={oy + oWidth} stroke={opening.type === 'door' ? '#fbbf24' : '#60a5fa'} strokeWidth={opening.type === 'door' ? 3 : 4} strokeLinecap="round" />
-                      {opening.type === 'door' && (
+                      <line x1={ox} y1={oy} x2={ox} y2={oy + oWidth} stroke={openingStroke} strokeWidth={openingWidth} strokeDasharray={openingDash} strokeLinecap={isCased ? 'butt' : 'round'} />
+                      {isDoor && (
                         <path d={`M ${ox} ${oy} A ${oWidth} ${oWidth} 0 0 1 ${ox - oWidth} ${oy + oWidth}`} fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeDasharray="3,3" />
                       )}
                     </g>
@@ -529,8 +554,8 @@ export const VectorCanvas: React.FC<VectorCanvasProps> = ({
                   oy = ry + offset;
                   return (
                     <g key={opening.id}>
-                      <line x1={ox} y1={oy} x2={ox} y2={oy + oWidth} stroke={opening.type === 'door' ? '#fbbf24' : '#60a5fa'} strokeWidth={opening.type === 'door' ? 3 : 4} strokeLinecap="round" />
-                      {opening.type === 'door' && (
+                      <line x1={ox} y1={oy} x2={ox} y2={oy + oWidth} stroke={openingStroke} strokeWidth={openingWidth} strokeDasharray={openingDash} strokeLinecap={isCased ? 'butt' : 'round'} />
+                      {isDoor && (
                         <path d={`M ${ox} ${oy} A ${oWidth} ${oWidth} 0 0 0 ${ox + oWidth} ${oy + oWidth}`} fill="none" stroke="#fbbf24" strokeWidth="1.2" strokeDasharray="3,3" />
                       )}
                     </g>
