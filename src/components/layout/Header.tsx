@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SprocketProject } from '../../types/sprocket';
 import { createMeshEngineBundle } from '../../services/exporters/bundleSerializer';
 import {
@@ -17,6 +17,8 @@ import {
   Trash2,
   Sparkles,
   Printer,
+  SlidersHorizontal,
+  Download,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -54,6 +56,43 @@ export const Header: React.FC<HeaderProps> = ({
   const [exportSuccess, setExportSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [showProjectMenu, setShowProjectMenu] = useState(false);
+  const [showToolsMenu, setShowToolsMenu] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
+
+  const toolsMenuRef = useRef<HTMLDivElement>(null);
+  const exportMenuRef = useRef<HTMLDivElement>(null);
+  const projectMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (toolsMenuRef.current && !toolsMenuRef.current.contains(target)) {
+        setShowToolsMenu(false);
+      }
+      if (exportMenuRef.current && !exportMenuRef.current.contains(target)) {
+        setShowExportMenu(false);
+      }
+      if (projectMenuRef.current && !projectMenuRef.current.contains(target)) {
+        setShowProjectMenu(false);
+      }
+    };
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowToolsMenu(false);
+        setShowExportMenu(false);
+        setShowProjectMenu(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, []);
 
   const handleManualSaveClick = async () => {
     await onSaveManual();
@@ -95,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
               <Compass className="w-5 h-5 text-sky-400" />
             </div>
           </div>
-          <div className="relative">
+          <div className="relative" ref={projectMenuRef}>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-sm tracking-wide text-white">
                 DataMesh <span className="text-sky-400 font-light">Sprocket</span>
@@ -105,7 +144,11 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
               <button
                 type="button"
-                onClick={() => setShowProjectMenu(!showProjectMenu)}
+                onClick={() => {
+                  setShowProjectMenu(!showProjectMenu);
+                  setShowToolsMenu(false);
+                  setShowExportMenu(false);
+                }}
                 className="text-[11px] bg-slate-800 hover:bg-slate-700 text-sky-300 border border-slate-700 px-2 py-0.5 rounded-lg flex items-center gap-1 font-medium transition max-w-[180px]"
                 title="Switch or Create Saved Inspection Projects"
               >
@@ -245,14 +288,15 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      {/* Action Buttons */}
+      {/* Action Buttons Cluster */}
       <div className="flex items-center gap-2">
+        {/* Manual Save Button */}
         <button
           onClick={handleManualSaveClick}
-          className={`p-2 rounded-lg transition flex items-center gap-1 text-xs font-semibold ${
+          className={`p-2 rounded-xl transition flex items-center gap-1 text-xs font-semibold ${
             saveSuccess
               ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-800/70'
-              : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              : 'text-slate-400 hover:text-white hover:bg-slate-800 border border-transparent'
           }`}
           title={saveSuccess ? 'Project Saved to IndexedDB!' : 'Save Project to IndexedDB'}
         >
@@ -266,73 +310,29 @@ export const Header: React.FC<HeaderProps> = ({
           )}
         </button>
 
-        {/* Document Ingestion Trigger */}
+        {/* Document Ingestion Trigger (Pinned) */}
         <button
           onClick={onOpenIngestion}
-          className="bg-sky-950/90 hover:bg-sky-900 text-sky-200 border border-sky-700/80 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+          className="bg-sky-950/90 hover:bg-sky-900 text-sky-200 border border-sky-700/80 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition shadow-sm"
           title="Ingest Property Record Card, Blueprint PDF, or Image"
         >
           <Upload className="w-3.5 h-3.5 text-sky-400" />
           <span>Ingest File</span>
         </button>
 
-        {/* Property Record Card & Data Fields Trigger */}
-        <button
-          onClick={onOpenPropertyRecord}
-          className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
-          title="View & Edit Prepopulated Property Data Fields"
-        >
-          <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
-          <span className="hidden md:inline">Property</span> Fields
-        </button>
-
-        {/* Craftsman Valuation Modal Trigger */}
-        <button
-          onClick={onOpenValuation}
-          className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
-        >
-          <Calculator className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="hidden sm:inline">Craftsman</span> Valuation
-        </button>
-
-        {/* Materials Supply Retailer Procurement Trigger */}
-        <button
-          onClick={onOpenProcurement}
-          title={`Materials Supply Order (${project.supply_retailer?.retailer_name || "Lowe's Pro Supply"})`}
-          className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
-        >
-          <ShoppingCart className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-          <span className="hidden sm:inline max-w-[140px] truncate">
-            {project.supply_retailer?.retailer_name || "Lowe's"}
-          </span>{' '}
-          Order
-        </button>
-
-        {/* Printable PDF Inspection Report Trigger */}
-        {onOpenReport && (
-          <button
-            onClick={onOpenReport}
-            title="Generate Printable PDF Property Inspection & Scope of Work Report"
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
-          >
-            <Printer className="w-3.5 h-3.5 text-sky-400" />
-            <span className="hidden sm:inline">PDF</span> Report
-          </button>
-        )}
-
-        {/* Gemini Multimodal AI Settings Trigger */}
+        {/* Gemini Multimodal AI Settings Trigger (Pinned - Always Visible) */}
         {onOpenGeminiSettings && (
           <button
             onClick={onOpenGeminiSettings}
             title="Configure Gemini Vision & Voice AI Adapter"
             className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${
               geminiConfigured
-                ? 'bg-violet-950/80 hover:bg-violet-900 text-violet-200 border-violet-700/80'
+                ? 'bg-violet-950/80 hover:bg-violet-900 text-violet-200 border-violet-700/80 shadow-sm'
                 : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5 text-violet-400" />
-            <span className="hidden md:inline">Gemini AI</span>
+            <span>Gemini AI</span>
             <span
               className={`w-2 h-2 rounded-full ${
                 geminiConfigured ? 'bg-emerald-400' : 'bg-slate-600'
@@ -341,26 +341,201 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
         )}
 
-        {/* MeshEngine Export Drop Bundle */}
-        <button
-          onClick={handleExportMeshEngineBundle}
-          disabled={isExporting}
-          className="bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-500 hover:to-emerald-500 text-white font-semibold px-3.5 py-1.5 rounded-xl text-xs flex items-center gap-2 shadow-lg shadow-sky-950 transition disabled:opacity-50"
-        >
-          {isExporting ? (
-            <span>Packaging...</span>
-          ) : exportSuccess ? (
-            <>
-              <CheckCircle2 className="w-4 h-4 text-emerald-200" />
-              <span>Bundle Exported!</span>
-            </>
-          ) : (
-            <>
-              <FileArchive className="w-4 h-4" />
-              <span>MeshEngine Drop (.ZIP)</span>
-            </>
+        {/* Tools Dropdown Menu (Property Fields, Valuation, Materials Order) */}
+        <div className="relative" ref={toolsMenuRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowToolsMenu(!showToolsMenu);
+              setShowExportMenu(false);
+              setShowProjectMenu(false);
+            }}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${
+              showToolsMenu
+                ? 'bg-slate-700 text-white border-slate-600 ring-1 ring-sky-500/50'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+            }`}
+            title="Inspection & Estimating Tools"
+          >
+            <SlidersHorizontal className="w-3.5 h-3.5 text-sky-400" />
+            <span>Tools</span>
+            <ChevronDown
+              className={`w-3 h-3 text-slate-400 transition-transform duration-150 ${
+                showToolsMenu ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+
+          {showToolsMenu && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+              <div className="p-1">
+                {/* Property Record Card & Data Fields Trigger */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    onOpenPropertyRecord();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition text-xs group"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-amber-950/60 border border-amber-800/60 flex items-center justify-center shrink-0">
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-amber-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white group-hover:text-amber-300 transition">
+                      Property Fields
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      View & edit prepopulated record data
+                    </div>
+                  </div>
+                </button>
+
+                {/* Craftsman Valuation Modal Trigger */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    onOpenValuation();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition text-xs group"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center shrink-0">
+                    <Calculator className="w-3.5 h-3.5 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white group-hover:text-emerald-300 transition">
+                      Craftsman Valuation
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      Replacement cost & depreciation model
+                    </div>
+                  </div>
+                </button>
+
+                {/* Materials Supply Retailer Procurement Trigger */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowToolsMenu(false);
+                    onOpenProcurement();
+                  }}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition text-xs group"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-blue-950/60 border border-blue-800/60 flex items-center justify-center shrink-0">
+                    <ShoppingCart className="w-3.5 h-3.5 text-blue-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white group-hover:text-blue-300 transition">
+                      Materials Order
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      {project.supply_retailer?.retailer_name || "Lowe's Pro Supply"} pick sheet
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
           )}
-        </button>
+        </div>
+
+        {/* Export Dropdown Menu (PDF Report & MeshEngine ZIP Bundle) */}
+        <div className="relative" ref={exportMenuRef}>
+          <button
+            type="button"
+            onClick={() => {
+              setShowExportMenu(!showExportMenu);
+              setShowToolsMenu(false);
+              setShowProjectMenu(false);
+            }}
+            disabled={isExporting}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${
+              isExporting
+                ? 'bg-sky-950/80 text-sky-300 border-sky-700 animate-pulse'
+                : exportSuccess
+                ? 'bg-emerald-950/80 text-emerald-300 border-emerald-700'
+                : showExportMenu
+                ? 'bg-slate-700 text-white border-slate-600 ring-1 ring-sky-500/50'
+                : 'bg-gradient-to-r from-sky-600 to-emerald-600 hover:from-sky-500 hover:to-emerald-500 text-white border-transparent shadow-lg shadow-sky-950'
+            }`}
+            title="Export Inspection Reports & Data Bundles"
+          >
+            {isExporting ? (
+              <>
+                <span className="w-2 h-2 rounded-full bg-sky-400 animate-ping" />
+                <span>Packaging...</span>
+              </>
+            ) : exportSuccess ? (
+              <>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+                <span>Exported!</span>
+              </>
+            ) : (
+              <>
+                <Download className="w-3.5 h-3.5" />
+                <span>Export</span>
+                <ChevronDown
+                  className={`w-3 h-3 text-slate-200 transition-transform duration-150 ${
+                    showExportMenu ? 'rotate-180' : ''
+                  }`}
+                />
+              </>
+            )}
+          </button>
+
+          {showExportMenu && (
+            <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+              <div className="p-1">
+                {/* Printable PDF Inspection Report Trigger */}
+                {onOpenReport && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowExportMenu(false);
+                      onOpenReport();
+                    }}
+                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition text-xs group"
+                  >
+                    <div className="w-7 h-7 rounded-lg bg-sky-950/60 border border-sky-800/60 flex items-center justify-center shrink-0">
+                      <Printer className="w-3.5 h-3.5 text-sky-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white group-hover:text-sky-300 transition">
+                        PDF Inspection Report
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        Printable scope of work & defect report
+                      </div>
+                    </div>
+                  </button>
+                )}
+
+                {/* MeshEngine Export Drop Bundle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExportMenu(false);
+                    handleExportMeshEngineBundle();
+                  }}
+                  disabled={isExporting}
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition text-xs group disabled:opacity-50"
+                >
+                  <div className="w-7 h-7 rounded-lg bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center shrink-0">
+                    <FileArchive className="w-3.5 h-3.5 text-emerald-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-semibold text-white group-hover:text-emerald-300 transition">
+                      MeshEngine Drop (.ZIP)
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      Complete project bundle & CAD assets
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
