@@ -103,13 +103,13 @@ function readInitialEnvConfig(): GeminiConnectionConfig {
     typeof import.meta !== 'undefined'
       ? (import.meta as unknown as { env?: Record<string, string | undefined> }).env
       : undefined;
-  const envProxy = metaEnv?.VITE_GEMINI_PROXY_URL?.trim() || '/api/gemini';
+  const envProxy = metaEnv?.VITE_GEMINI_PROXY_URL?.trim() || undefined;
   const sessionKey = readSessionApiKey();
   return {
     apiKey: sessionKey,
     model: DEFAULT_GEMINI_MODELS[0],
     proxyUrl: envProxy,
-    enabled: Boolean(sessionKey),
+    enabled: Boolean(sessionKey || envProxy),
   };
 }
 
@@ -124,7 +124,7 @@ export function getCachedGeminiConfig(): GeminiConnectionConfig {
 
 /**
  * Loads non-secret Gemini preferences from IndexedDB and pairs them with any ephemeral sessionStorage key.
- * Purges any legacy plaintext API keys that were stored in IndexedDB.
+ * Purges any legacy plaintext API keys and stale local-only `/api/gemini` proxy settings from IndexedDB.
  */
 export async function loadGeminiConfig(): Promise<GeminiConnectionConfig> {
   const sessionKey = readSessionApiKey();
@@ -133,21 +133,29 @@ export async function loadGeminiConfig(): Promise<GeminiConnectionConfig> {
     if (stored && typeof stored === 'object') {
       const legacyKey = typeof stored.apiKey === 'string' ? stored.apiKey.trim() : '';
       const activeKey = sessionKey || legacyKey;
-      if (legacyKey) {
-        writeSessionApiKey(legacyKey);
-        await set(STORAGE_GEMINI_KEY, { ...stored, apiKey: '' });
+      const storedProxy =
+        typeof stored.proxyUrl === 'string' && stored.proxyUrl.trim()
+          ? stored.proxyUrl.trim()
+          : undefined;
+      const normalizedProxy = storedProxy === '/api/gemini' ? undefined : storedProxy;
+
+      if (legacyKey || storedProxy === '/api/gemini') {
+        if (legacyKey) writeSessionApiKey(legacyKey);
+        await set(STORAGE_GEMINI_KEY, {
+          ...stored,
+          apiKey: '',
+          proxyUrl: normalizedProxy,
+        });
       }
+
       cachedConfig = {
         apiKey: activeKey,
         model:
           typeof stored.model === 'string' && stored.model.trim()
             ? stored.model.trim()
             : DEFAULT_GEMINI_MODELS[0],
-        proxyUrl:
-          typeof stored.proxyUrl === 'string' && stored.proxyUrl.trim()
-            ? stored.proxyUrl.trim()
-            : '/api/gemini',
-        enabled: Boolean(stored.enabled && (activeKey || stored.proxyUrl?.trim())),
+        proxyUrl: normalizedProxy,
+        enabled: Boolean(stored.enabled && (activeKey || normalizedProxy)),
       };
       return { ...cachedConfig };
     }
@@ -338,8 +346,14 @@ function modelSortRank(modelId: string): number {
   return 3;
 }
 
+function isNonJsonResponse(res: Response): boolean {
+  const ct = res.headers?.get?.('content-type');
+  return typeof ct === 'string' && !ct.toLowerCase().includes('json');
+}
+
 /**
- * Fetches live Gemini model IDs supporting generateContent from Google's API or configured proxy.
+ * Fetches live Gemini model IDs supporting generateContent from Google's API or configured proxy,
+ * automatically falling back to direct Google API calls if a static host returns HTML/404 for a proxy URL.
  */
 export async function fetchAvailableGeminiModels(
   config?: GeminiConnectionConfig
@@ -356,19 +370,46 @@ export async function fetchAvailableGeminiModels(
     };
   }
 
-  const endpoint = proxy
-    ? `${proxy}${proxy.includes('?') ? '&' : '?'}action=models`
-    : 'https://generativelanguage.googleapis.com/v1beta/models';
-
-  const headers: Record<string, string> = {};
-  if (proxy && key) {
-    headers.Authorization = `Bearer ${key}`;
-  } else if (!proxy && key) {
-    headers['x-goog-api-key'] = key;
-  }
+  const fetchDirectGoogleModels = () =>
+    fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`, {
+      method: 'GET',
+    });
 
   try {
-    const response = await fetch(endpoint, { method: 'GET', headers });
+    let response: Response | null = null;
+
+    if (proxy) {
+      const proxyEndpoint = `${proxy}${proxy.includes('?') ? '&' : '?'}action=models`;
+      const proxyHeaders: Record<string, string> = {};
+      if (key) {
+        proxyHeaders.Authorization = `Bearer ${key}`;
+      }
+      try {
+        const proxyRes = await fetch(proxyEndpoint, { method: 'GET', headers: proxyHeaders });
+        if (proxyRes.ok && !isNonJsonResponse(proxyRes)) {
+          response = proxyRes;
+        } else if (!key) {
+          response = proxyRes;
+        }
+      } catch {
+        if (!key) {
+          throw new Error('Backend Gemini proxy unreachable and no fallback API key is set.');
+        }
+      }
+    }
+
+    if (!response && key) {
+      response = await fetchDirectGoogleModels();
+    }
+
+    if (!response) {
+      return {
+        ok: false,
+        models: [...DEFAULT_GEMINI_MODELS],
+        message: 'Could not reach Gemini proxy and no fallback API key provided.',
+      };
+    }
+
     if (!response.ok) {
       const errBody = await response.text().catch(() => '');
       return {
@@ -377,6 +418,14 @@ export async function fetchAvailableGeminiModels(
         message: redactSecrets(
           `HTTP ${response.status} listing models${errBody ? `: ${errBody.slice(0, 140)}` : ''}`
         ),
+      };
+    }
+
+    if (isNonJsonResponse(response)) {
+      return {
+        ok: false,
+        models: [...DEFAULT_GEMINI_MODELS],
+        message: 'Proxy endpoint returned HTML instead of JSON. Clear Proxy URL or enter a Gemini API Key.',
       };
     }
 
@@ -429,13 +478,85 @@ export async function fetchAvailableGeminiModels(
     return {
       ok: false,
       models: [...DEFAULT_GEMINI_MODELS],
-      message: `Failed to fetch models: ${reason}`,
+      message: redactSecrets(`Failed to fetch models: ${reason}`),
     };
   }
 }
 
+async function sendDirectGoogleGenerateContent(params: {
+  model: string;
+  key: string;
+  systemInstruction: string;
+  parts: GeminiInlinePart[];
+  cfg: GeminiConnectionConfig;
+}): Promise<Response> {
+  const directHeaders = { 'Content-Type': 'application/json' };
+  const buildDirectUrl = (targetModel: string) =>
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
+      targetModel
+    )}:generateContent?key=${encodeURIComponent(params.key)}`;
+
+  const primaryBody = {
+    systemInstruction: { parts: [{ text: params.systemInstruction }] },
+    contents: [{ role: 'user', parts: params.parts }],
+    generationConfig: {
+      temperature: 0.1,
+      responseMimeType: 'application/json',
+    },
+  };
+
+  let response = await fetch(buildDirectUrl(params.model), {
+    method: 'POST',
+    headers: directHeaders,
+    body: JSON.stringify(primaryBody),
+  });
+
+  if (response.status === 404) {
+    const modelsResult = await fetchAvailableGeminiModels({
+      ...params.cfg,
+      proxyUrl: undefined,
+    });
+    if (modelsResult.ok && modelsResult.models.length > 0) {
+      const fallbackModel =
+        modelsResult.models.find((m) => m !== params.model && m.includes('flash')) ||
+        modelsResult.models[0];
+      if (fallbackModel && fallbackModel !== params.model) {
+        cachedConfig = { ...cachedConfig, model: fallbackModel };
+        void saveGeminiConfig(cachedConfig);
+        response = await fetch(buildDirectUrl(fallbackModel), {
+          method: 'POST',
+          headers: directHeaders,
+          body: JSON.stringify(primaryBody),
+        });
+      }
+    }
+  }
+
+  if (response.status === 400) {
+    const compatModel = /(tts|image|preview)/i.test(params.model)
+      ? 'gemini-2.5-flash'
+      : params.model;
+    response = await fetch(buildDirectUrl(compatModel), {
+      method: 'POST',
+      headers: directHeaders,
+      body: JSON.stringify({
+        contents: [
+          {
+            role: 'user',
+            parts: [{ text: params.systemInstruction }, ...params.parts],
+          },
+        ],
+        generationConfig: { temperature: 0.1 },
+      }),
+    });
+  }
+
+  return response;
+}
+
 /**
- * Sends a structured JSON multimodal generateContent request via proxy URL or direct Gemini REST API.
+ * Sends a structured JSON multimodal generateContent request via proxy URL or direct Gemini REST API,
+ * falling back to direct Google API calls if a proxy URL is unreachable or returns HTML on static hosting.
  */
 export async function callGeminiGenerateContent(params: {
   parts: GeminiInlinePart[];
@@ -455,95 +576,48 @@ export async function callGeminiGenerateContent(params: {
     throw new Error('Gemini API key or proxy URL is required.');
   }
 
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-  };
-
-  let endpoint: string;
-  let bodyPayload: Record<string, unknown>;
+  let response: Response | null = null;
 
   if (proxy) {
-    endpoint = proxy;
+    const proxyHeaders: Record<string, string> = { 'Content-Type': 'application/json' };
     if (key) {
-      headers.Authorization = `Bearer ${key}`;
+      proxyHeaders.Authorization = `Bearer ${key}`;
     }
-    bodyPayload = {
-      model,
-      systemInstruction: params.systemInstruction,
-      parts: params.parts,
-    };
-  } else {
-    endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      model
-    )}:generateContent`;
-    headers['x-goog-api-key'] = key;
-    bodyPayload = {
-      systemInstruction: {
-        parts: [{ text: params.systemInstruction }],
-      },
-      contents: [
-        {
-          role: 'user',
+    try {
+      const proxyRes = await fetch(proxy, {
+        method: 'POST',
+        headers: proxyHeaders,
+        body: JSON.stringify({
+          model,
+          systemInstruction: params.systemInstruction,
           parts: params.parts,
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-        responseMimeType: 'application/json',
-      },
-    };
-  }
-
-  let response = await fetch(endpoint, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(bodyPayload),
-  });
-
-  // Auto-resolve an available model on HTTP 404 (e.g. preview model unavailable on key)
-  if (response.status === 404 && !proxy) {
-    const modelsResult = await fetchAvailableGeminiModels(cfg);
-    if (modelsResult.ok && modelsResult.models.length > 0) {
-      const fallbackModel =
-        modelsResult.models.find((m) => m !== model && m.includes('flash')) ||
-        modelsResult.models[0];
-      if (fallbackModel && fallbackModel !== model) {
-        cachedConfig = { ...cachedConfig, model: fallbackModel };
-        void saveGeminiConfig(cachedConfig);
-        const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-          fallbackModel
-        )}:generateContent`;
-        response = await fetch(fallbackEndpoint, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(bodyPayload),
-        });
+        }),
+      });
+      if (proxyRes.ok && !isNonJsonResponse(proxyRes)) {
+        response = proxyRes;
+      } else if (!key) {
+        response = proxyRes;
+      }
+    } catch (err) {
+      if (!key) {
+        const msg = err instanceof Error ? err.message : 'Proxy request failed';
+        throw new Error(redactSecrets(msg));
       }
     }
   }
 
-  // Compatibility retry on HTTP 400 (omitting systemInstruction & responseMimeType, avoiding specialized preview/tts/image models)
-  if (response.status === 400 && !proxy) {
-    const compatModel = /(tts|image|preview)/i.test(model) ? 'gemini-2.5-flash' : model;
-    const compatEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
-      compatModel
-    )}:generateContent`;
-    const compatBodyPayload = {
-      contents: [
-        {
-          role: 'user',
-          parts: [{ text: params.systemInstruction }, ...params.parts],
-        },
-      ],
-      generationConfig: {
-        temperature: 0.1,
-      },
-    };
-    response = await fetch(compatEndpoint, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(compatBodyPayload),
+  if (!response && key) {
+    response = await sendDirectGoogleGenerateContent({
+      model,
+      key,
+      systemInstruction: params.systemInstruction,
+      parts: params.parts,
+      cfg,
     });
+  }
+
+  if (!response) {
+    throw new Error('Unable to reach Gemini backend proxy or direct API.');
   }
 
   if (!response.ok) {
@@ -551,6 +625,10 @@ export async function callGeminiGenerateContent(params: {
     throw new Error(
       redactSecrets(`Gemini request failed (HTTP ${response.status}): ${errText.slice(0, 200)}`)
     );
+  }
+
+  if (isNonJsonResponse(response)) {
+    throw new Error('Gemini endpoint returned HTML instead of JSON.');
   }
 
   const payload = (await response.json()) as {

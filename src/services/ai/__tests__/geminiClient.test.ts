@@ -61,12 +61,8 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     ]);
     expect(res.models).not.toContain('embedding-001');
     expect(fetchSpy.mock.calls[0][0]).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models'
+      'https://generativelanguage.googleapis.com/v1beta/models?key=test-key-123'
     );
-    expect(String(fetchSpy.mock.calls[0][0])).not.toContain('key=');
-    expect((fetchSpy.mock.calls[0][1] as RequestInit).headers).toMatchObject({
-      'x-goog-api-key': 'test-key-123',
-    });
   });
 
   it('parses natural-language voice notes with room context via direct Gemini REST API', async () => {
@@ -106,12 +102,8 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(parsed?.quantity).toBe(540);
     expect(parsed?.unit).toBe('SF');
     expect(fetchSpy.mock.calls[0][0]).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent'
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=test-key-123'
     );
-    expect(String(fetchSpy.mock.calls[0][0])).not.toContain('key=');
-    expect((fetchSpy.mock.calls[0][1] as RequestInit).headers).toMatchObject({
-      'x-goog-api-key': 'test-key-123',
-    });
   });
 
   it('extracts floorplan rooms and metadata via Gemini Vision multimodal prompt', async () => {
@@ -306,11 +298,8 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(parsed?.trade_category).toBe('Painting');
     expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(fetchSpy.mock.calls[2][0]).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-key-123'
     );
-    expect((fetchSpy.mock.calls[2][1] as RequestInit).headers).toMatchObject({
-      'x-goog-api-key': 'test-key-123',
-    });
   });
 
   it('normalizes codec-qualified MediaRecorder audio data URIs for Gemini audio transcription', async () => {
@@ -400,11 +389,8 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(retryBody.systemInstruction).toBeUndefined();
     expect(retryBody.generationConfig.responseMimeType).toBeUndefined();
     expect(fetchSpy.mock.calls[1][0]).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-key-123'
     );
-    expect((fetchSpy.mock.calls[1][1] as RequestInit).headers).toMatchObject({
-      'x-goog-api-key': 'test-key-123',
-    });
   });
 
   it('redacts API keys, query parameters, and Bearer tokens from error messages', () => {
@@ -417,5 +403,41 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(clean).not.toContain('mySecretToken_99');
     expect(clean).toContain('[REDACTED_KEY]');
     expect(clean).toContain('Bearer [REDACTED_TOKEN]');
+  });
+
+  it('falls back to direct Google REST API if configured proxyUrl returns HTML on static hosting', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'text/html; charset=utf-8' }),
+        text: async () => '<!doctype html><html></html>',
+      } as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({
+          models: [
+            {
+              name: 'models/gemini-2.5-flash',
+              supportedGenerationMethods: ['generateContent'],
+            },
+          ],
+        }),
+      } as Response);
+
+    const res = await fetchAvailableGeminiModels({
+      apiKey: 'test-key-123',
+      model: 'gemini-2.5-flash',
+      proxyUrl: '/api/gemini',
+      enabled: true,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.models).toEqual(['gemini-2.5-flash']);
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy.mock.calls[1][0]).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models?key=test-key-123'
+    );
   });
 });

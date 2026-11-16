@@ -76,14 +76,8 @@ export const App: React.FC = () => {
       listSavedProjects().then(setSavedProjects);
     });
     loadGeminiConfig().then(async (loadedConfig) => {
-      const serverStatus = await checkServerGeminiEnvStatus(
-        loadedConfig.proxyUrl || '/api/gemini'
-      );
-      if (serverStatus.configured) {
-        setGeminiConfig(getCachedGeminiConfig());
-      } else {
-        setGeminiConfig(loadedConfig);
-      }
+      await checkServerGeminiEnvStatus(loadedConfig.proxyUrl || '/api/gemini');
+      setGeminiConfig(getCachedGeminiConfig());
     });
   }, []);
 
