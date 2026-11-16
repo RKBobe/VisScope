@@ -15,11 +15,14 @@ import {
   FolderOpen,
   Plus,
   Trash2,
+  Sparkles,
 } from 'lucide-react';
 
 interface HeaderProps {
   project: SprocketProject;
   savedProjects?: SprocketProject[];
+  geminiConfigured?: boolean;
+  onOpenGeminiSettings?: () => void;
   onSelectProject?: (proj: SprocketProject) => void;
   onCreateNewProject?: () => void;
   onDeleteProject?: (projectId: string) => void;
@@ -33,6 +36,8 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   project,
   savedProjects = [],
+  geminiConfigured = false,
+  onOpenGeminiSettings,
   onSelectProject,
   onCreateNewProject,
   onDeleteProject,
@@ -299,6 +304,27 @@ export const Header: React.FC<HeaderProps> = ({
           </span>{' '}
           Order
         </button>
+
+        {/* Gemini Multimodal AI Settings Trigger */}
+        {onOpenGeminiSettings && (
+          <button
+            onClick={onOpenGeminiSettings}
+            title="Configure Gemini Vision & Voice AI Adapter"
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 border transition ${
+              geminiConfigured
+                ? 'bg-violet-950/80 hover:bg-violet-900 text-violet-200 border-violet-700/80'
+                : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'
+            }`}
+          >
+            <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+            <span className="hidden md:inline">Gemini AI</span>
+            <span
+              className={`w-2 h-2 rounded-full ${
+                geminiConfigured ? 'bg-emerald-400' : 'bg-slate-600'
+              }`}
+            />
+          </button>
+        )}
 
         {/* MeshEngine Export Drop Bundle */}
         <button

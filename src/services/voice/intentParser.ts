@@ -1,5 +1,10 @@
 import { DefectItem, ScopeAction, TradeCategory, RegionalCostIndex } from '../../types/sprocket';
 import { getAdjustedUnitPrice } from '../math/valuation';
+import {
+  isGeminiConfigured,
+  parseVoiceScopeWithGemini,
+  RoomVoiceContext,
+} from '../ai/geminiClient';
 
 export interface ParsedVoiceDefect {
   rawTranscript: string;
@@ -206,9 +211,13 @@ export function parseVoiceDefectTranscript(transcript: string): ParsedVoiceDefec
       if (mapping.keywords.some((kw) => lowerItem.includes(kw))) {
         matchedTrade = mapping.trade;
         unit = mapping.defaultUnit;
-        confidence = 0.80;
+        confidence = unit === 'SF' || unit === 'LF' ? 0.55 : 0.80;
         break;
       }
+    }
+
+    if (unit === 'SF' || unit === 'LF') {
+      confidence = Math.min(confidence, 0.55);
     }
 
     return {
@@ -226,12 +235,13 @@ export function parseVoiceDefectTranscript(transcript: string): ParsedVoiceDefec
 }
 
 /**
- * Parses voice transcripts with deterministic local regex, and falls back to a structured
- * endpoint if confidence < 0.70 and network connectivity is active.
+ * Parses voice transcripts with deterministic local regex, and falls back to Gemini AI
+ * or a structured cloud endpoint if confidence < 0.70 and network connectivity is active.
  */
 export async function normalizeVoiceIntentWithFallback(
   transcript: string,
-  cloudEndpointUrl?: string
+  cloudEndpointUrl?: string,
+  roomContext?: RoomVoiceContext
 ): Promise<ParsedVoiceDefect | null> {
   const localParsed = parseVoiceDefectTranscript(transcript);
 
@@ -240,7 +250,15 @@ export async function normalizeVoiceIntentWithFallback(
     return localParsed;
   }
 
-  // If confidence < 0.70 or no match, check if online & cloud endpoint provided
+  // Try configured Gemini AI multimodal/intent client next
+  if (isGeminiConfigured()) {
+    const aiParsed = await parseVoiceScopeWithGemini(transcript, roomContext);
+    if (aiParsed) {
+      return aiParsed;
+    }
+  }
+
+  // If confidence < 0.70 or no match, check if online & explicit cloud endpoint provided
   if (typeof navigator !== 'undefined' && navigator.onLine && cloudEndpointUrl) {
     try {
       const response = await fetch(cloudEndpointUrl, {

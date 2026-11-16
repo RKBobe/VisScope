@@ -34,6 +34,13 @@ import {
 } from './services/math/valuation';
 import { applyIngestionToProject } from './services/ingestion/documentIngestor';
 import { IngestionResult } from './services/ingestion/types';
+import {
+  GeminiConnectionConfig,
+  getCachedGeminiConfig,
+  isGeminiConfigured,
+  loadGeminiConfig,
+  saveGeminiConfig,
+} from './services/ai/geminiClient';
 import { Header } from './components/layout/Header';
 import { RoomPalette } from './components/layout/RoomPalette';
 import { VectorCanvas } from './components/canvas/VectorCanvas';
@@ -42,10 +49,14 @@ import { ValuationModal } from './components/modals/ValuationModal';
 import { LowesProcurementModal } from './components/modals/LowesProcurementModal';
 import { DocumentIngestionModal } from './components/modals/DocumentIngestionModal';
 import { PropertyRecordModal } from './components/modals/PropertyRecordModal';
+import { GeminiSettingsModal } from './components/modals/GeminiSettingsModal';
 
 export const App: React.FC = () => {
   const [project, setProject] = useState<SprocketProject>(createInitialProject());
   const [savedProjects, setSavedProjects] = useState<SprocketProject[]>([]);
+  const [geminiConfig, setGeminiConfig] = useState<GeminiConnectionConfig>(() =>
+    getCachedGeminiConfig()
+  );
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [currentLevel, setCurrentLevel] = useState<FloorLevel>('First Floor');
   const [showAnsiBuffer, setShowAnsiBuffer] = useState<boolean>(true);
@@ -55,6 +66,7 @@ export const App: React.FC = () => {
   const [isProcurementOpen, setIsProcurementOpen] = useState(false);
   const [isIngestionOpen, setIsIngestionOpen] = useState(false);
   const [isPropertyRecordOpen, setIsPropertyRecordOpen] = useState(false);
+  const [isGeminiSettingsOpen, setIsGeminiSettingsOpen] = useState(false);
 
   // Initial load from IndexedDB
   useEffect(() => {
@@ -62,6 +74,7 @@ export const App: React.FC = () => {
       setProject(loaded);
       listSavedProjects().then(setSavedProjects);
     });
+    loadGeminiConfig().then(setGeminiConfig);
   }, []);
 
   // Save to IndexedDB whenever project updates
@@ -351,12 +364,19 @@ export const App: React.FC = () => {
     });
   };
 
+  const handleSaveGeminiConfig = async (nextConfig: GeminiConnectionConfig) => {
+    setGeminiConfig(nextConfig);
+    await saveGeminiConfig(nextConfig);
+  };
+
   return (
     <div className="w-screen h-screen flex flex-col bg-[#090d16] text-slate-100 overflow-hidden font-sans">
       {/* Top Header */}
       <Header
         project={project}
         savedProjects={savedProjects}
+        geminiConfigured={isGeminiConfigured(geminiConfig)}
+        onOpenGeminiSettings={() => setIsGeminiSettingsOpen(true)}
         onSelectProject={handleSelectProject}
         onCreateNewProject={handleCreateNewProject}
         onDeleteProject={handleDeleteProject}
@@ -433,6 +453,14 @@ export const App: React.FC = () => {
         isOpen={isPropertyRecordOpen}
         onClose={() => setIsPropertyRecordOpen(false)}
         onUpdateProjectMetadata={handleUpdateProjectMetadata}
+      />
+
+      {/* Gemini Multimodal AI Adapter Settings Modal */}
+      <GeminiSettingsModal
+        isOpen={isGeminiSettingsOpen}
+        onClose={() => setIsGeminiSettingsOpen(false)}
+        config={geminiConfig}
+        onSaveConfig={handleSaveGeminiConfig}
       />
     </div>
   );

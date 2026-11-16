@@ -13,6 +13,11 @@ import {
 } from '../../types/sprocket';
 import { speechService } from '../../services/voice/speechService';
 import { parseVoiceDefectTranscript, createDefectFromVoice, ParsedVoiceDefect } from '../../services/voice/intentParser';
+import {
+  isGeminiConfigured,
+  parseVoiceScopeWithGemini,
+  transcribeAndParseAudioWithGemini,
+} from '../../services/ai/geminiClient';
 import { compressImage } from '../../services/imageUtils';
 import {
   X,
@@ -83,6 +88,9 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
   const [manualTranscriptInput, setManualTranscriptInput] = useState('');
   const [parsedDefect, setParsedDefect] = useState<ParsedVoiceDefect | null>(null);
   const [voiceError, setVoiceError] = useState<string | null>(null);
+  const [isAiParsing, setIsAiParsing] = useState(false);
+  const [recordingMode, setRecordingMode] = useState<'speech' | 'gemini_audio' | null>(null);
+  const latestSpokenRef = useRef<string>('');
 
   // Manual Defect Form State
   const [showAddDefect, setShowAddDefect] = useState(false);
@@ -164,66 +172,213 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
     setManualTranscriptInput('');
     setParsedDefect(null);
     setVoiceError(null);
+    setIsAiParsing(false);
+    setRecordingMode(null);
+    latestSpokenRef.current = '';
     setPreviewPhoto(null);
     setCameraSlot(null);
     if (isRecording) {
       speechService.stopListening();
+      if (speechService.getAudioRecordingState()) {
+        void speechService.stopAudioRecording();
+      }
       setIsRecording(false);
     }
   }, [room?.id]);
 
   if (!room) return null;
 
-  // Push-to-Talk Toggle
-  const toggleSpeech = () => {
-    if (isRecording) {
-      speechService.stopListening();
-      setIsRecording(false);
-    } else {
-      setVoiceError(null);
-      if (!speechService.checkSupport()) {
-        setVoiceError(
-          'Browser Web Speech API is unavailable. Type a phrase below or tap a sample phrase.'
-        );
-        setIsRecording(false);
-        return;
+  const getRoomVoiceContext = () => ({
+    name: room.name,
+    floor_area_sqft: room.floor_area_sqft,
+    net_wall_area_sqft: room.net_wall_area_sqft,
+  });
+
+  const applyOfflineRoomAreaFallback = (
+    trimmed: string,
+    parsed: ParsedVoiceDefect
+  ): ParsedVoiceDefect => {
+    const lower = trimmed.toLowerCase();
+    if (parsed.quantity === 1 && /\b(all|whole|entire|full)\b/.test(lower)) {
+      if (
+        parsed.trade_category === 'Painting' ||
+        parsed.trade_category === 'Drywall' ||
+        parsed.trade_category === 'Interior Wall Finish'
+      ) {
+        return { ...parsed, quantity: room.net_wall_area_sqft, unit: 'SF' };
       }
-      setIsRecording(true);
-      speechService.startListening(
-        (text, isFinal) => {
-          setTranscript(text);
-          const parsed = parseVoiceDefectTranscript(text);
-          if (parsed) {
-            setParsedDefect(parsed);
-          }
-          if (isFinal) {
-            // Save transcript into room node
-            onUpdateRoom({ ...room, voice_transcript: text });
-          }
-        },
-        (err) => {
-          setVoiceError(`Voice error: ${err}`);
-          setIsRecording(false);
+      if (
+        parsed.trade_category === 'Carpet, Flooring' ||
+        parsed.trade_category === 'Flooring'
+      ) {
+        return { ...parsed, quantity: room.floor_area_sqft, unit: 'SF' };
+      }
+    }
+    return parsed;
+  };
+
+  const processSpokenTranscript = async (
+    rawText: string,
+    forceAi: boolean = false,
+    persistTranscript: boolean = false
+  ) => {
+    const trimmed = rawText.trim();
+    if (!trimmed) return;
+    setVoiceError(null);
+    setTranscript(trimmed);
+    if (persistTranscript) {
+      onUpdateRoom({ ...room, voice_transcript: trimmed });
+    }
+
+    const parsed = forceAi ? null : parseVoiceDefectTranscript(trimmed);
+    if (parsed && parsed.confidence >= 0.7) {
+      setVoiceError(null);
+      setParsedDefect(parsed);
+      return;
+    }
+
+    if (isGeminiConfigured()) {
+      setIsAiParsing(true);
+      try {
+        const aiParsed = await parseVoiceScopeWithGemini(
+          trimmed,
+          getRoomVoiceContext(),
+          undefined,
+          true
+        );
+        if (aiParsed) {
+          setVoiceError(null);
+          setParsedDefect(aiParsed);
+          return;
         }
+      } catch (err) {
+        if (!forceAi && parsed) {
+          setVoiceError(null);
+          setParsedDefect(applyOfflineRoomAreaFallback(trimmed, parsed));
+          return;
+        }
+        const reason = err instanceof Error ? err.message : 'Gemini AI request failed.';
+        setVoiceError(reason);
+        setParsedDefect(null);
+        return;
+      } finally {
+        setIsAiParsing(false);
+      }
+    }
+
+    if (parsed) {
+      setVoiceError(null);
+      setParsedDefect(applyOfflineRoomAreaFallback(trimmed, parsed));
+    } else {
+      setParsedDefect(null);
+      setVoiceError(
+        'Could not extract a scope line item. Try e.g. "Replace 40 lf of baseboard", use AI Parse with Gemini configured, or add a Manual Item.'
       );
     }
   };
 
-  const handleParseManualTranscript = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trimmed = manualTranscriptInput.trim();
-    if (!trimmed) return;
-    setVoiceError(null);
-    setTranscript(trimmed);
-    const parsed = parseVoiceDefectTranscript(trimmed);
-    if (parsed) {
-      setParsedDefect(parsed);
+  // Push-to-Talk Toggle (Web Speech API primary + MediaRecorder WAV + Gemini fallback)
+  const toggleSpeech = async () => {
+    if (isRecording) {
+      if (speechService.getAudioRecordingState()) {
+        setIsRecording(false);
+        setRecordingMode(null);
+        setIsAiParsing(true);
+        try {
+          const audioDataUrl = await speechService.stopAudioRecording();
+          if (!audioDataUrl) {
+            setVoiceError(
+              'No audio captured from microphone. Check mic permissions and speak before stopping.'
+            );
+            return;
+          }
+          const aiResult = await transcribeAndParseAudioWithGemini(
+            audioDataUrl,
+            getRoomVoiceContext()
+          );
+          setTranscript(aiResult.transcript);
+          const resolvedDefect =
+            aiResult.defect || parseVoiceDefectTranscript(aiResult.transcript);
+          if (resolvedDefect) {
+            setVoiceError(null);
+            setParsedDefect(resolvedDefect);
+          } else {
+            setVoiceError(
+              `Transcribed "${aiResult.transcript}", but could not extract a scope item.`
+            );
+          }
+          onUpdateRoom({ ...room, voice_transcript: aiResult.transcript });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Gemini audio transcription failed.';
+          setVoiceError(msg);
+        } finally {
+          setIsAiParsing(false);
+        }
+        return;
+      }
+
+      speechService.stopListening();
+      setIsRecording(false);
+      setRecordingMode(null);
+      const pendingSpoken = latestSpokenRef.current.trim();
+      latestSpokenRef.current = '';
+      if (pendingSpoken) {
+        await processSpokenTranscript(pendingSpoken, false, true);
+      }
     } else {
+      setVoiceError(null);
       setParsedDefect(null);
+      latestSpokenRef.current = '';
+
+      if (speechService.checkSupport()) {
+        setRecordingMode('speech');
+        setIsRecording(true);
+        speechService.startListening(
+          (text, isFinal) => {
+            latestSpokenRef.current = text;
+            setTranscript(text);
+            const localParsed = parseVoiceDefectTranscript(text);
+            if (localParsed && localParsed.confidence >= 0.7) {
+              setVoiceError(null);
+              setParsedDefect(localParsed);
+            }
+            if (isFinal) {
+              latestSpokenRef.current = '';
+              void processSpokenTranscript(text, false, true);
+            }
+          },
+          (err) => {
+            setVoiceError(`Voice error: ${err}`);
+            setIsRecording(false);
+            setRecordingMode(null);
+          }
+        );
+        return;
+      }
+
+      if (isGeminiConfigured() && speechService.canRecordAudio()) {
+        const started = await speechService.startAudioRecording((err) => {
+          setVoiceError(`Audio recording error: ${err}`);
+          setIsRecording(false);
+          setRecordingMode(null);
+        });
+        if (started) {
+          setRecordingMode('gemini_audio');
+          setIsRecording(true);
+        }
+        return;
+      }
+
       setVoiceError(
-        'Could not extract a scope line item. Try e.g. "Replace 40 lf of baseboard" or use Manual Item.'
+        'Browser Web Speech API is unavailable. Configure Gemini AI for mic recording or type a phrase below.'
       );
+      setIsRecording(false);
     }
+  };
+
+  const handleParseManualTranscript = async (e: React.FormEvent, forceAi: boolean = false) => {
+    e.preventDefault();
+    await processSpokenTranscript(manualTranscriptInput, forceAi, false);
   };
 
   // Add parsed voice defect to room
@@ -683,7 +838,13 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
               {isRecording ? <MicOff className="w-6 h-6" /> : <Mic className="w-6 h-6" />}
             </button>
             <span className="text-xs font-medium text-slate-300 mt-2">
-              {isRecording ? 'Listening... Speak deficiency line item' : 'Tap to start voice scoping'}
+              {isAiParsing
+                ? 'Transcribing & extracting scope with Gemini Audio...'
+                : isRecording && recordingMode === 'gemini_audio'
+                ? 'Recording (Gemini Audio)... Tap mic again when done speaking'
+                : isRecording
+                ? 'Listening... Speak deficiency line item'
+                : 'Tap to start voice scoping'}
             </span>
           </div>
 
@@ -730,20 +891,45 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
             </div>
           )}
 
-          {/* Quick Typed Phrase Fallback */}
-          <form onSubmit={handleParseManualTranscript} className="flex gap-1.5 mb-3">
+          {isAiParsing && (
+            <div className="text-xs text-violet-300 bg-violet-950/40 border border-violet-800 p-2 rounded mb-3 font-mono">
+              Analyzing with Gemini Multimodal AI...
+            </div>
+          )}
+
+          {/* Quick Typed Phrase & AI Parse Fallback */}
+          <form onSubmit={(e) => handleParseManualTranscript(e, false)} className="flex gap-1.5 mb-3">
             <input
               type="text"
               value={manualTranscriptInput}
               onChange={(e) => setManualTranscriptInput(e.target.value)}
-              placeholder='Type phrase (e.g. "Paint 200 sq ft wall")'
+              placeholder='Type phrase or note (e.g. "Repaint water stained ceiling")'
               className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-sky-400 focus:outline-none"
             />
             <button
               type="submit"
-              className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
+              disabled={isAiParsing}
+              className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition"
             >
               Parse
+            </button>
+            <button
+              type="button"
+              disabled={isAiParsing || !manualTranscriptInput.trim()}
+              onClick={(e) => {
+                if (!isGeminiConfigured()) {
+                  setVoiceError(
+                    'Configure your Gemini API key or proxy URL via "Gemini AI" in the top bar first.'
+                  );
+                  return;
+                }
+                void handleParseManualTranscript(e, true);
+              }}
+              className="bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg flex items-center gap-1 transition"
+              title="Parse natural-language note with Gemini AI using room dimensions"
+            >
+              <Sparkles className="w-3 h-3" />
+              AI Parse
             </button>
           </form>
 

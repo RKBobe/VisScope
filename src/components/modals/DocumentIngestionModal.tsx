@@ -5,6 +5,10 @@ import {
   ingestDocumentFile,
   ingestDocumentTextOrBuffer,
 } from '../../services/ingestion/documentIngestor';
+import {
+  extractDocumentWithGeminiVision,
+  isGeminiConfigured,
+} from '../../services/ai/geminiClient';
 import { IngestionResult } from '../../services/ingestion/types';
 import {
   X,
@@ -82,6 +86,31 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
       setSelectedMode(parsed.recommended_mode);
     } catch (err: any) {
       setError(err?.message || 'Failed to analyze text');
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleAnalyzeWithGeminiVision = async () => {
+    if (!result) return;
+    if (!isGeminiConfigured()) {
+      setError('Gemini AI is not configured. Click "Gemini AI" in the top header to add an API key or proxy URL.');
+      return;
+    }
+    try {
+      setIsProcessing(true);
+      setError(null);
+      const aiResult = await extractDocumentWithGeminiVision({
+        fileName: result.metadata.source_file_name || 'floorplan.png',
+        pageImages: result.metadata.blueprint_underlay_data_uri
+          ? [result.metadata.blueprint_underlay_data_uri]
+          : [],
+        hintText: rawTextInput || result.raw_extracted_text,
+      });
+      setResult(aiResult);
+      setSelectedMode(aiResult.recommended_mode);
+    } catch (err: any) {
+      setError(err?.message || 'Gemini Vision extraction failed');
     } finally {
       setIsProcessing(false);
     }
@@ -251,7 +280,7 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
               {/* Tiered Decision Banner */}
               <div className="bg-slate-950 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="space-y-1">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <ShieldCheck className="w-4 h-4 text-emerald-400" />
                     <span className="text-xs font-bold text-white">
                       {result.document_label}
@@ -259,6 +288,15 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
                     <span className="text-[10px] font-mono bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-800">
                       {Math.round(result.confidence * 100)}% Confidence
                     </span>
+                    <button
+                      type="button"
+                      onClick={handleAnalyzeWithGeminiVision}
+                      disabled={isProcessing}
+                      className="text-[11px] bg-violet-950/90 hover:bg-violet-900 disabled:opacity-40 text-violet-200 border border-violet-700/80 px-2.5 py-0.5 rounded-lg flex items-center gap-1 font-semibold transition"
+                    >
+                      <Sparkles className="w-3 h-3 text-violet-400" />
+                      {isProcessing ? 'Analyzing...' : 'Analyze with Gemini Vision'}
+                    </button>
                   </div>
                   <p className="text-xs text-slate-300">{result.mode_reasoning}</p>
                 </div>
@@ -465,14 +503,25 @@ export const DocumentIngestionModal: React.FC<DocumentIngestionModalProps> = ({
                       <span className="text-[10px] text-slate-500">
                         Enter 2+ rooms as &quot;Name: LxW&quot; (e.g. Kitchen 18x14) or raw County PRC text to extract geometry.
                       </span>
-                      <button
-                        type="button"
-                        onClick={handleReanalyzeText}
-                        disabled={isProcessing || !rawTextInput.trim()}
-                        className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white px-3 py-1 rounded-lg text-xs font-semibold transition"
-                      >
-                        Re-Analyze Text
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={handleAnalyzeWithGeminiVision}
+                          disabled={isProcessing}
+                          className="bg-violet-600 hover:bg-violet-500 disabled:opacity-40 text-white px-3 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition"
+                        >
+                          <Sparkles className="w-3 h-3" />
+                          Analyze with Gemini Vision
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleReanalyzeText}
+                          disabled={isProcessing || !rawTextInput.trim()}
+                          className="bg-sky-600 hover:bg-sky-500 disabled:opacity-40 text-white px-3 py-1 rounded-lg text-xs font-semibold transition"
+                        >
+                          Re-Analyze Text
+                        </button>
+                      </div>
                     </div>
                   </div>
                 )}
