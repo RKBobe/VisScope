@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
+  checkServerGeminiEnvStatus,
+  clearStoredGeminiKey,
   DEFAULT_GEMINI_MODELS,
   fetchAvailableGeminiModels,
   GeminiConnectionConfig,
@@ -11,6 +13,8 @@ import {
   CheckCircle2,
   KeyRound,
   Server,
+  ShieldCheck,
+  Trash2,
 } from 'lucide-react';
 
 interface GeminiSettingsModalProps {
@@ -29,6 +33,7 @@ export const GeminiSettingsModal: React.FC<GeminiSettingsModalProps> = ({
   const [draft, setDraft] = useState<GeminiConnectionConfig>(config);
   const [availableModels, setAvailableModels] = useState<string[]>(DEFAULT_GEMINI_MODELS);
   const [isFetchingModels, setIsFetchingModels] = useState(false);
+  const [serverEnvConfigured, setServerEnvConfigured] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -38,10 +43,30 @@ export const GeminiSettingsModal: React.FC<GeminiSettingsModalProps> = ({
       if (config.model && !availableModels.includes(config.model)) {
         setAvailableModels((prev) => [config.model, ...prev]);
       }
+      void checkServerGeminiEnvStatus(config.proxyUrl || '/api/gemini').then((res) => {
+        setServerEnvConfigured(res.configured);
+      });
     }
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleClearKey = async () => {
+    const cleared = await clearStoredGeminiKey();
+    setDraft((prev) => ({
+      ...prev,
+      apiKey: '',
+      enabled: serverEnvConfigured ? prev.enabled : false,
+    }));
+    onSaveConfig({
+      ...cleared,
+      apiKey: '',
+    });
+    setStatusMessage({
+      ok: true,
+      text: 'Browser session API key cleared from memory and sessionStorage.',
+    });
+  };
 
   const handleFetchModels = async () => {
     setIsFetchingModels(true);
@@ -148,15 +173,44 @@ export const GeminiSettingsModal: React.FC<GeminiSettingsModalProps> = ({
             />
           </label>
 
+          {/* Server .env Status Banner */}
+          {serverEnvConfigured && (
+            <div className="bg-emerald-950/50 border border-emerald-800/80 rounded-xl px-3.5 py-2.5 flex items-center justify-between text-emerald-300">
+              <div className="flex items-center gap-2 font-semibold text-xs">
+                <ShieldCheck className="w-4 h-4 shrink-0" />
+                <span>Server `.env` Key Active (`/api/gemini`)</span>
+              </div>
+              <span className="text-[10px] font-mono bg-emerald-900/60 px-2 py-0.5 rounded border border-emerald-700/80">
+                Browser secret free
+              </span>
+            </div>
+          )}
+
           {/* API Key */}
           <div>
-            <label className="text-slate-300 font-semibold flex items-center gap-1.5 mb-1.5">
-              <KeyRound className="w-3.5 h-3.5 text-sky-400" />
-              Gemini API Key (stored locally in IndexedDB)
-            </label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                <KeyRound className="w-3.5 h-3.5 text-sky-400" />
+                Fallback Browser Key (ephemeral sessionStorage — cleared on tab close)
+              </label>
+              {draft.apiKey && (
+                <button
+                  type="button"
+                  onClick={handleClearKey}
+                  className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1 font-semibold transition"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Clear Key
+                </button>
+              )}
+            </div>
             <input
               type="password"
-              placeholder="AIza... (leave blank if authenticating via backend proxy)"
+              placeholder={
+                serverEnvConfigured
+                  ? 'Optional — leave blank to use server .env GEMINI_API_KEY'
+                  : 'AIza... (or configure GEMINI_API_KEY in .env for server proxy)'
+              }
               value={draft.apiKey}
               onChange={(e) =>
                 setDraft({

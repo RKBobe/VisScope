@@ -312,11 +312,20 @@ function escapeXml(unsafe: string): string {
 export async function createMeshEngineBundle(project: SprocketProject): Promise<Blob> {
   const zip = new JSZip();
 
-  // 1. manifest.json
+  // 1. manifest.json (strip secret supplier API tokens before exporting archive)
+  const sanitizedProject: SprocketProject = project.supply_retailer
+    ? {
+        ...project,
+        supply_retailer: {
+          ...project.supply_retailer,
+          api_key: undefined,
+        },
+      }
+    : project;
   const manifestData = {
     generator: 'DataMesh Sprocket Core System v1.0.0',
     exported_at: new Date().toISOString(),
-    project,
+    project: sanitizedProject,
   };
   zip.file('manifest.json', JSON.stringify(manifestData, null, 2));
 

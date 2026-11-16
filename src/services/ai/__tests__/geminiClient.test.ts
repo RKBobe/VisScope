@@ -4,6 +4,7 @@ import {
   fetchAvailableGeminiModels,
   GeminiConnectionConfig,
   parseVoiceScopeWithGemini,
+  redactSecrets,
   transcribeAndParseAudioWithGemini,
 } from '../geminiClient';
 
@@ -59,9 +60,13 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
       'gemini-2.5-flash',
     ]);
     expect(res.models).not.toContain('embedding-001');
-    expect(fetchSpy.mock.calls[0][0]).toContain(
-      'https://generativelanguage.googleapis.com/v1beta/models?key=test-key-123'
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models'
     );
+    expect(String(fetchSpy.mock.calls[0][0])).not.toContain('key=');
+    expect((fetchSpy.mock.calls[0][1] as RequestInit).headers).toMatchObject({
+      'x-goog-api-key': 'test-key-123',
+    });
   });
 
   it('parses natural-language voice notes with room context via direct Gemini REST API', async () => {
@@ -100,9 +105,13 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(parsed?.trade_category).toBe('Painting');
     expect(parsed?.quantity).toBe(540);
     expect(parsed?.unit).toBe('SF');
-    expect(fetchSpy.mock.calls[0][0]).toContain(
-      '/v1beta/models/gemini-3-flash-preview:generateContent?key=test-key-123'
+    expect(fetchSpy.mock.calls[0][0]).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent'
     );
+    expect(String(fetchSpy.mock.calls[0][0])).not.toContain('key=');
+    expect((fetchSpy.mock.calls[0][1] as RequestInit).headers).toMatchObject({
+      'x-goog-api-key': 'test-key-123',
+    });
   });
 
   it('extracts floorplan rooms and metadata via Gemini Vision multimodal prompt', async () => {
@@ -296,9 +305,12 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(parsed?.quantity).toBe(608);
     expect(parsed?.trade_category).toBe('Painting');
     expect(fetchSpy).toHaveBeenCalledTimes(3);
-    expect(fetchSpy.mock.calls[2][0]).toContain(
-      '/v1beta/models/gemini-2.5-flash:generateContent?key=test-key-123'
+    expect(fetchSpy.mock.calls[2][0]).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
     );
+    expect((fetchSpy.mock.calls[2][1] as RequestInit).headers).toMatchObject({
+      'x-goog-api-key': 'test-key-123',
+    });
   });
 
   it('normalizes codec-qualified MediaRecorder audio data URIs for Gemini audio transcription', async () => {
@@ -387,8 +399,23 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     const retryBody = JSON.parse((fetchSpy.mock.calls[1][1] as RequestInit).body as string);
     expect(retryBody.systemInstruction).toBeUndefined();
     expect(retryBody.generationConfig.responseMimeType).toBeUndefined();
-    expect(fetchSpy.mock.calls[1][0]).toContain(
-      '/v1beta/models/gemini-2.5-flash:generateContent?key=test-key-123'
+    expect(fetchSpy.mock.calls[1][0]).toBe(
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
     );
+    expect((fetchSpy.mock.calls[1][1] as RequestInit).headers).toMatchObject({
+      'x-goog-api-key': 'test-key-123',
+    });
+  });
+
+  it('redacts API keys, query parameters, and Bearer tokens from error messages', () => {
+    const sampleError =
+      'Failed calling https://generativelanguage.googleapis.com/v1beta/models?key=AIzaSyTestSecretKey1234567890 with header Authorization: Bearer mySecretToken_99 and key AIzaSyAnotherFakeKeyValue12345';
+    const clean = redactSecrets(sampleError);
+
+    expect(clean).not.toContain('AIzaSyTestSecretKey1234567890');
+    expect(clean).not.toContain('AIzaSyAnotherFakeKeyValue12345');
+    expect(clean).not.toContain('mySecretToken_99');
+    expect(clean).toContain('[REDACTED_KEY]');
+    expect(clean).toContain('Bearer [REDACTED_TOKEN]');
   });
 });

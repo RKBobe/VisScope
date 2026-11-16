@@ -37,6 +37,7 @@ export const DEFAULT_GEMINI_MODELS: string[] = [
 ];
 
 const STORAGE_GEMINI_KEY = 'datamesh_sprocket_gemini_config_v1';
+const SESSION_GEMINI_KEY = 'datamesh_sprocket_gemini_session_key';
 
 const VALID_TRADE_CATEGORIES: TradeCategory[] = [
   'Excavation',
@@ -62,18 +63,53 @@ const VALID_TRADE_CATEGORIES: TradeCategory[] = [
 const VALID_SCOPE_ACTIONS: ScopeAction[] = ['Keep', 'Remove', 'Replace', 'Add'];
 const VALID_UNITS = ['SF', 'LF', 'EA', 'ALLOWANCE'] as const;
 
+/**
+ * Redacts API keys, query secrets, and Bearer tokens before surfacing errors or logs.
+ */
+export function redactSecrets(input: string): string {
+  return input
+    .replace(/AIza[0-9A-Za-z_-]{20,}/g, '[REDACTED_KEY]')
+    .replace(/([?&]key=)[^&\s"']+/gi, '$1[REDACTED_KEY]')
+    .replace(/(Bearer\s+)[A-Za-z0-9._-]+/gi, '$1[REDACTED_TOKEN]');
+}
+
+function readSessionApiKey(): string {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      return (window.sessionStorage.getItem(SESSION_GEMINI_KEY) || '').trim();
+    }
+  } catch {
+    // Ignore storage restriction errors
+  }
+  return '';
+}
+
+function writeSessionApiKey(apiKey: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      if (apiKey.trim()) {
+        window.sessionStorage.setItem(SESSION_GEMINI_KEY, apiKey.trim());
+      } else {
+        window.sessionStorage.removeItem(SESSION_GEMINI_KEY);
+      }
+    }
+  } catch {
+    // Ignore storage restriction errors
+  }
+}
+
 function readInitialEnvConfig(): GeminiConnectionConfig {
   const metaEnv =
     typeof import.meta !== 'undefined'
       ? (import.meta as unknown as { env?: Record<string, string | undefined> }).env
       : undefined;
-  const envKey = metaEnv?.VITE_GEMINI_API_KEY?.trim() || '';
-  const envProxy = metaEnv?.VITE_GEMINI_PROXY_URL?.trim() || '';
+  const envProxy = metaEnv?.VITE_GEMINI_PROXY_URL?.trim() || '/api/gemini';
+  const sessionKey = readSessionApiKey();
   return {
-    apiKey: envKey,
+    apiKey: sessionKey,
     model: DEFAULT_GEMINI_MODELS[0],
-    proxyUrl: envProxy || undefined,
-    enabled: Boolean(envKey || envProxy),
+    proxyUrl: envProxy,
+    enabled: Boolean(sessionKey),
   };
 }
 
@@ -87,17 +123,31 @@ export function getCachedGeminiConfig(): GeminiConnectionConfig {
 }
 
 /**
- * Loads the persisted Gemini configuration from IndexedDB (falling back to cached env defaults).
+ * Loads non-secret Gemini preferences from IndexedDB and pairs them with any ephemeral sessionStorage key.
+ * Purges any legacy plaintext API keys that were stored in IndexedDB.
  */
 export async function loadGeminiConfig(): Promise<GeminiConnectionConfig> {
+  const sessionKey = readSessionApiKey();
   try {
     const stored = await get<GeminiConnectionConfig>(STORAGE_GEMINI_KEY);
     if (stored && typeof stored === 'object') {
+      const legacyKey = typeof stored.apiKey === 'string' ? stored.apiKey.trim() : '';
+      const activeKey = sessionKey || legacyKey;
+      if (legacyKey) {
+        writeSessionApiKey(legacyKey);
+        await set(STORAGE_GEMINI_KEY, { ...stored, apiKey: '' });
+      }
       cachedConfig = {
-        apiKey: typeof stored.apiKey === 'string' ? stored.apiKey : '',
-        model: typeof stored.model === 'string' && stored.model.trim() ? stored.model.trim() : DEFAULT_GEMINI_MODELS[0],
-        proxyUrl: typeof stored.proxyUrl === 'string' && stored.proxyUrl.trim() ? stored.proxyUrl.trim() : undefined,
-        enabled: Boolean(stored.enabled),
+        apiKey: activeKey,
+        model:
+          typeof stored.model === 'string' && stored.model.trim()
+            ? stored.model.trim()
+            : DEFAULT_GEMINI_MODELS[0],
+        proxyUrl:
+          typeof stored.proxyUrl === 'string' && stored.proxyUrl.trim()
+            ? stored.proxyUrl.trim()
+            : '/api/gemini',
+        enabled: Boolean(stored.enabled && (activeKey || stored.proxyUrl?.trim())),
       };
       return { ...cachedConfig };
     }
@@ -108,20 +158,82 @@ export async function loadGeminiConfig(): Promise<GeminiConnectionConfig> {
 }
 
 /**
- * Persists the Gemini configuration in IndexedDB and updates the synchronous cache.
+ * Saves Gemini configuration while keeping API keys in ephemeral sessionStorage only (never in IndexedDB).
  */
 export async function saveGeminiConfig(config: GeminiConnectionConfig): Promise<void> {
+  const trimmedKey = config.apiKey.trim();
   const normalized: GeminiConnectionConfig = {
-    apiKey: config.apiKey.trim(),
+    apiKey: trimmedKey,
     model: config.model.trim() || DEFAULT_GEMINI_MODELS[0],
     proxyUrl: config.proxyUrl?.trim() || undefined,
     enabled: config.enabled,
   };
   cachedConfig = normalized;
+  writeSessionApiKey(trimmedKey);
   try {
-    await set(STORAGE_GEMINI_KEY, normalized);
+    await set(STORAGE_GEMINI_KEY, { ...normalized, apiKey: '' });
   } catch {
     // Ignore IndexedDB errors outside browser contexts
+  }
+}
+
+/**
+ * Clears any Gemini API key from memory, sessionStorage, and persistent IndexedDB.
+ */
+export async function clearStoredGeminiKey(): Promise<GeminiConnectionConfig> {
+  writeSessionApiKey('');
+  cachedConfig = {
+    ...cachedConfig,
+    apiKey: '',
+    enabled: Boolean(cachedConfig.proxyUrl?.trim() && cachedConfig.enabled),
+  };
+  try {
+    await set(STORAGE_GEMINI_KEY, { ...cachedConfig, apiKey: '' });
+  } catch {
+    // Ignore IndexedDB errors
+  }
+  return { ...cachedConfig };
+}
+
+/**
+ * Checks whether a server-side `.env` GEMINI_API_KEY is active on `/api/gemini`.
+ */
+export async function checkServerGeminiEnvStatus(
+  proxyEndpoint: string = '/api/gemini'
+): Promise<{ configured: boolean; model?: string; proxyAvailable: boolean }> {
+  if (typeof fetch !== 'function') {
+    return { configured: false, proxyAvailable: false };
+  }
+  try {
+    const statusUrl = `${proxyEndpoint}${proxyEndpoint.includes('?') ? '&' : '?'}action=status`;
+    const res = await fetch(statusUrl, { method: 'GET' });
+    const contentType = res.headers?.get?.('content-type') || '';
+    if (!res.ok || !contentType.includes('application/json')) {
+      if (cachedConfig.proxyUrl === proxyEndpoint) {
+        cachedConfig = { ...cachedConfig, proxyUrl: undefined };
+      }
+      return { configured: false, proxyAvailable: false };
+    }
+    const data = (await res.json()) as { configured?: boolean; model?: string };
+    const configured = Boolean(data?.configured);
+    if (configured) {
+      cachedConfig = {
+        ...cachedConfig,
+        proxyUrl: proxyEndpoint,
+        model: data.model?.trim() || cachedConfig.model || DEFAULT_GEMINI_MODELS[0],
+        enabled: true,
+      };
+    }
+    return {
+      configured,
+      model: data.model,
+      proxyAvailable: true,
+    };
+  } catch {
+    if (cachedConfig.proxyUrl === proxyEndpoint) {
+      cachedConfig = { ...cachedConfig, proxyUrl: undefined };
+    }
+    return { configured: false, proxyAvailable: false };
   }
 }
 
@@ -246,11 +358,13 @@ export async function fetchAvailableGeminiModels(
 
   const endpoint = proxy
     ? `${proxy}${proxy.includes('?') ? '&' : '?'}action=models`
-    : `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`;
+    : 'https://generativelanguage.googleapis.com/v1beta/models';
 
   const headers: Record<string, string> = {};
   if (proxy && key) {
     headers.Authorization = `Bearer ${key}`;
+  } else if (!proxy && key) {
+    headers['x-goog-api-key'] = key;
   }
 
   try {
@@ -260,7 +374,9 @@ export async function fetchAvailableGeminiModels(
       return {
         ok: false,
         models: [...DEFAULT_GEMINI_MODELS],
-        message: `HTTP ${response.status} listing models${errBody ? `: ${errBody.slice(0, 140)}` : ''}`,
+        message: redactSecrets(
+          `HTTP ${response.status} listing models${errBody ? `: ${errBody.slice(0, 140)}` : ''}`
+        ),
       };
     }
 
@@ -359,7 +475,8 @@ export async function callGeminiGenerateContent(params: {
   } else {
     endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       model
-    )}:generateContent?key=${encodeURIComponent(key)}`;
+    )}:generateContent`;
+    headers['x-goog-api-key'] = key;
     bodyPayload = {
       systemInstruction: {
         parts: [{ text: params.systemInstruction }],
@@ -395,7 +512,7 @@ export async function callGeminiGenerateContent(params: {
         void saveGeminiConfig(cachedConfig);
         const fallbackEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
           fallbackModel
-        )}:generateContent?key=${encodeURIComponent(key)}`;
+        )}:generateContent`;
         response = await fetch(fallbackEndpoint, {
           method: 'POST',
           headers,
@@ -410,7 +527,7 @@ export async function callGeminiGenerateContent(params: {
     const compatModel = /(tts|image|preview)/i.test(model) ? 'gemini-2.5-flash' : model;
     const compatEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(
       compatModel
-    )}:generateContent?key=${encodeURIComponent(key)}`;
+    )}:generateContent`;
     const compatBodyPayload = {
       contents: [
         {
@@ -431,7 +548,9 @@ export async function callGeminiGenerateContent(params: {
 
   if (!response.ok) {
     const errText = await response.text().catch(() => '');
-    throw new Error(`Gemini request failed (HTTP ${response.status}): ${errText.slice(0, 200)}`);
+    throw new Error(
+      redactSecrets(`Gemini request failed (HTTP ${response.status}): ${errText.slice(0, 200)}`)
+    );
   }
 
   const payload = (await response.json()) as {

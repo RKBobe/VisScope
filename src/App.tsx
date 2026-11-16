@@ -36,6 +36,7 @@ import { applyIngestionToProject } from './services/ingestion/documentIngestor';
 import { IngestionResult } from './services/ingestion/types';
 import {
   GeminiConnectionConfig,
+  checkServerGeminiEnvStatus,
   getCachedGeminiConfig,
   isGeminiConfigured,
   loadGeminiConfig,
@@ -68,13 +69,22 @@ export const App: React.FC = () => {
   const [isPropertyRecordOpen, setIsPropertyRecordOpen] = useState(false);
   const [isGeminiSettingsOpen, setIsGeminiSettingsOpen] = useState(false);
 
-  // Initial load from IndexedDB
+  // Initial load from IndexedDB & server .env proxy check
   useEffect(() => {
     loadSavedProject().then((loaded) => {
       setProject(loaded);
       listSavedProjects().then(setSavedProjects);
     });
-    loadGeminiConfig().then(setGeminiConfig);
+    loadGeminiConfig().then(async (loadedConfig) => {
+      const serverStatus = await checkServerGeminiEnvStatus(
+        loadedConfig.proxyUrl || '/api/gemini'
+      );
+      if (serverStatus.configured) {
+        setGeminiConfig(getCachedGeminiConfig());
+      } else {
+        setGeminiConfig(loadedConfig);
+      }
+    });
   }, []);
 
   // Save to IndexedDB whenever project updates

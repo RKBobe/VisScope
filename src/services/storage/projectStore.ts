@@ -219,11 +219,53 @@ export function createBlankProject(name?: string): SprocketProject {
   };
 }
 
+function getSupplierSessionKeyStorageKey(projectId: string): string {
+  return `datamesh_sprocket_supplier_session_key_${projectId}`;
+}
+
+function writeSupplierSessionKey(projectId: string, apiKey?: string): void {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage) {
+      const storageKey = getSupplierSessionKeyStorageKey(projectId);
+      if (apiKey?.trim()) {
+        window.sessionStorage.setItem(storageKey, apiKey.trim());
+      } else {
+        window.sessionStorage.removeItem(storageKey);
+      }
+    }
+  } catch {
+    // Ignore sessionStorage restrictions
+  }
+}
+
+function hydrateSupplierSessionKey(project: SprocketProject): SprocketProject {
+  try {
+    if (typeof window !== 'undefined' && window.sessionStorage && project.supply_retailer) {
+      const sessionKey = window.sessionStorage.getItem(
+        getSupplierSessionKeyStorageKey(project.project_id)
+      );
+      const effectiveKey = sessionKey || project.supply_retailer.api_key;
+      if (effectiveKey) {
+        return {
+          ...project,
+          supply_retailer: {
+            ...project.supply_retailer,
+            api_key: effectiveKey,
+          },
+        };
+      }
+    }
+  } catch {
+    // Ignore sessionStorage restrictions
+  }
+  return project;
+}
+
 export async function loadSavedProject(): Promise<SprocketProject> {
   try {
     const saved = await get<SprocketProject>(STORAGE_KEY);
     if (saved && saved.rooms && saved.rooms.length > 0) {
-      return saved;
+      return hydrateSupplierSessionKey(saved);
     }
   } catch (err) {
     console.warn('Could not load project from IndexedDB:', err);
@@ -233,8 +275,15 @@ export async function loadSavedProject(): Promise<SprocketProject> {
 
 export async function saveProject(project: SprocketProject): Promise<void> {
   try {
+    if (project.supply_retailer) {
+      writeSupplierSessionKey(project.project_id, project.supply_retailer.api_key);
+    }
+
     const updatedProject: SprocketProject = {
       ...project,
+      supply_retailer: project.supply_retailer
+        ? { ...project.supply_retailer, api_key: undefined }
+        : undefined,
       updated_at: new Date().toISOString(),
     };
     await set(STORAGE_KEY, updatedProject);
@@ -250,14 +299,17 @@ export async function saveProject(project: SprocketProject): Promise<void> {
 export async function listSavedProjects(): Promise<SprocketProject[]> {
   try {
     const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
-    const entries = Object.values(existingMap);
+    const entries = Object.values(existingMap).map(hydrateSupplierSessionKey);
     if (entries.length > 0) {
       return entries.sort(
         (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
       );
     }
     const active = await loadSavedProject();
-    existingMap[active.project_id] = active;
+    const scrubbedActive: SprocketProject = active.supply_retailer
+      ? { ...active, supply_retailer: { ...active.supply_retailer, api_key: undefined } }
+      : active;
+    existingMap[active.project_id] = scrubbedActive;
     await set(STORAGE_LIST_KEY, existingMap);
     return [active];
   } catch (err) {
@@ -270,11 +322,12 @@ export async function deleteProjectFromStore(
   projectId: string
 ): Promise<SprocketProject[]> {
   try {
+    writeSupplierSessionKey(projectId, undefined);
     const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
     delete existingMap[projectId];
-    let remaining = Object.values(existingMap).sort(
-      (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
-    );
+    let remaining = Object.values(existingMap)
+      .map(hydrateSupplierSessionKey)
+      .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
     if (remaining.length === 0) {
       const fresh = createInitialProject();
       existingMap[fresh.project_id] = fresh;
