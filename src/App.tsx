@@ -51,6 +51,7 @@ import { LowesProcurementModal } from './components/modals/LowesProcurementModal
 import { DocumentIngestionModal } from './components/modals/DocumentIngestionModal';
 import { PropertyRecordModal } from './components/modals/PropertyRecordModal';
 import { GeminiSettingsModal } from './components/modals/GeminiSettingsModal';
+import { InspectionReportModal } from './components/modals/InspectionReportModal';
 
 export const App: React.FC = () => {
   const [project, setProject] = useState<SprocketProject>(createInitialProject());
@@ -68,6 +69,7 @@ export const App: React.FC = () => {
   const [isIngestionOpen, setIsIngestionOpen] = useState(false);
   const [isPropertyRecordOpen, setIsPropertyRecordOpen] = useState(false);
   const [isGeminiSettingsOpen, setIsGeminiSettingsOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   // Initial load from IndexedDB & server .env proxy check
   useEffect(() => {
@@ -374,25 +376,28 @@ export const App: React.FC = () => {
   };
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-[#090d16] text-slate-100 overflow-hidden font-sans">
+    <div className="w-screen h-screen flex flex-col bg-[#090d16] text-slate-100 overflow-hidden font-sans print:h-auto print:w-auto print:overflow-visible print:bg-white">
       {/* Top Header */}
-      <Header
-        project={project}
-        savedProjects={savedProjects}
-        geminiConfigured={isGeminiConfigured(geminiConfig)}
-        onOpenGeminiSettings={() => setIsGeminiSettingsOpen(true)}
-        onSelectProject={handleSelectProject}
-        onCreateNewProject={handleCreateNewProject}
-        onDeleteProject={handleDeleteProject}
-        onOpenValuation={() => setIsValuationOpen(true)}
-        onOpenProcurement={() => setIsProcurementOpen(true)}
-        onOpenIngestion={() => setIsIngestionOpen(true)}
-        onOpenPropertyRecord={() => setIsPropertyRecordOpen(true)}
-        onSaveManual={() => saveProject(project)}
-      />
+      <div className="print:hidden">
+        <Header
+          project={project}
+          savedProjects={savedProjects}
+          geminiConfigured={isGeminiConfigured(geminiConfig)}
+          onOpenGeminiSettings={() => setIsGeminiSettingsOpen(true)}
+          onSelectProject={handleSelectProject}
+          onCreateNewProject={handleCreateNewProject}
+          onDeleteProject={handleDeleteProject}
+          onOpenValuation={() => setIsValuationOpen(true)}
+          onOpenProcurement={() => setIsProcurementOpen(true)}
+          onOpenIngestion={() => setIsIngestionOpen(true)}
+          onOpenPropertyRecord={() => setIsPropertyRecordOpen(true)}
+          onOpenReport={() => setIsReportOpen(true)}
+          onSaveManual={() => saveProject(project)}
+        />
+      </div>
 
       {/* Main Vector Canvas Workspace */}
-      <main className="relative flex-1 w-full h-full overflow-hidden">
+      <main className="relative flex-1 w-full h-full overflow-hidden print:hidden">
         <VectorCanvas
           rooms={currentLevelRooms}
           activeRoomId={activeRoomId}
@@ -418,15 +423,17 @@ export const App: React.FC = () => {
       </main>
 
       {/* Room Inspection Drawer */}
-      <RoomInspectionDrawer
-        room={activeRoom}
-        costIndex={project.cost_index}
-        baselineQuality={project.baseline_quality}
-        baselineCondition={project.baseline_condition}
-        onClose={() => setActiveRoomId(null)}
-        onUpdateRoom={handleUpdateRoom}
-        onDeleteRoom={handleDeleteRoom}
-      />
+      <div className="print:hidden">
+        <RoomInspectionDrawer
+          room={activeRoom}
+          costIndex={project.cost_index}
+          baselineQuality={project.baseline_quality}
+          baselineCondition={project.baseline_condition}
+          onClose={() => setActiveRoomId(null)}
+          onUpdateRoom={handleUpdateRoom}
+          onDeleteRoom={handleDeleteRoom}
+        />
+      </div>
 
       {/* Craftsman Valuation Modal */}
       <ValuationModal
@@ -465,6 +472,13 @@ export const App: React.FC = () => {
         onClose={() => setIsGeminiSettingsOpen(false)}
         config={geminiConfig}
         onSaveConfig={handleSaveGeminiConfig}
+      />
+
+      {/* Printable PDF Property Inspection & Scope of Work Report Modal */}
+      <InspectionReportModal
+        project={project}
+        isOpen={isReportOpen}
+        onClose={() => setIsReportOpen(false)}
       />
     </div>
   );

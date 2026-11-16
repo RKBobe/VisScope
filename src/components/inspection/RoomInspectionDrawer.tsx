@@ -14,10 +14,13 @@ import {
 import { speechService } from '../../services/voice/speechService';
 import { parseVoiceDefectTranscript, createDefectFromVoice, ParsedVoiceDefect } from '../../services/voice/intentParser';
 import {
+  analyzeRoomPhotoWithGeminiVision,
   isGeminiConfigured,
   parseVoiceScopeWithGemini,
+  PhotoDefectAnalysisResult,
   transcribeAndParseAudioWithGemini,
 } from '../../services/ai/geminiClient';
+import { getAdjustedUnitPrice } from '../../services/math/valuation';
 import { compressImage } from '../../services/imageUtils';
 import {
   X,
@@ -111,6 +114,12 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
   const fileInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   const [previewPhoto, setPreviewPhoto] = useState<RoomPhoto | null>(null);
 
+  const [analyzingPhotoDir, setAnalyzingPhotoDir] = useState<string | null>(null);
+  const [photoAnalysisResult, setPhotoAnalysisResult] = useState<
+    (PhotoDefectAnalysisResult & { direction: string }) | null
+  >(null);
+  const [photoAnalysisError, setPhotoAnalysisError] = useState<string | null>(null);
+
   // Live Camera (getUserMedia) + Hardware Compass (DeviceOrientationEvent) State
   type PhotoSlotDirection = 'North' | 'South' | 'East' | 'West' | 'Defect';
   const [cameraSlot, setCameraSlot] = useState<PhotoSlotDirection | null>(null);
@@ -175,6 +184,9 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
     setIsAiParsing(false);
     setRecordingMode(null);
     latestSpokenRef.current = '';
+    setAnalyzingPhotoDir(null);
+    setPhotoAnalysisResult(null);
+    setPhotoAnalysisError(null);
     setPreviewPhoto(null);
     setCameraSlot(null);
     if (isRecording) {
@@ -450,6 +462,74 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
   const handleDeleteOpening = (openingId: string) => {
     const updated = room.openings.filter((o) => o.id !== openingId);
     onUpdateRoom({ ...room, openings: updated });
+  };
+
+  const handleAnalyzePhoto = async (photo: RoomPhoto) => {
+    if (!isGeminiConfigured()) {
+      setPhotoAnalysisError(
+        'Gemini AI is not configured. Click "Gemini AI" in the top header to add an API key or enable the server proxy.'
+      );
+      return;
+    }
+
+    setPhotoAnalysisError(null);
+    setAnalyzingPhotoDir(photo.direction);
+    try {
+      const result = await analyzeRoomPhotoWithGeminiVision({
+        photoDataUri: photo.file_uri,
+        direction: photo.direction,
+        roomContext: getRoomVoiceContext(),
+      });
+      setPhotoAnalysisResult({
+        ...result,
+        direction: photo.direction,
+      });
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : 'Gemini Vision failed to inspect this photo.';
+      setPhotoAnalysisError(msg);
+      setPhotoAnalysisResult(null);
+    } finally {
+      setAnalyzingPhotoDir(null);
+    }
+  };
+
+  const handleAcceptSinglePhotoDefect = (defect: ParsedVoiceDefect, index: number) => {
+    const item = createDefectFromVoice(defect, costIndex);
+    onUpdateRoom({
+      ...room,
+      deficiencies: [...room.deficiencies, item],
+    });
+    setPhotoAnalysisResult((prev) =>
+      prev
+        ? {
+            ...prev,
+            defects: prev.defects.filter((_, idx) => idx !== index),
+          }
+        : null
+    );
+  };
+
+  const handleAcceptAllPhotoDefects = () => {
+    if (!photoAnalysisResult || photoAnalysisResult.defects.length === 0) return;
+    const baseStamp = Date.now();
+    const newItems = photoAnalysisResult.defects.map((d, idx) => ({
+      ...createDefectFromVoice(d, costIndex),
+      id: `def-${baseStamp}-${idx}`,
+    }));
+    onUpdateRoom({
+      ...room,
+      deficiencies: [...room.deficiencies, ...newItems],
+    });
+    setPhotoAnalysisResult((prev) => (prev ? { ...prev, defects: [] } : null));
+  };
+
+  const handleApplySuggestedCondition = (cond: ConditionClass) => {
+    onUpdateRoom({
+      ...room,
+      condition_class: cond,
+      is_class_overridden: true,
+    });
   };
 
   // Mobile / Live Camera Photo Capture Handler
@@ -1341,10 +1421,17 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between mt-1 px-0.5">
-                        <span className="text-[10px] text-emerald-400 font-mono">
-                          Captured ({photo.azimuth_deg}°)
-                        </span>
+                      <div className="flex items-center justify-between gap-1 mt-1.5 px-0.5">
+                        <button
+                          type="button"
+                          disabled={analyzingPhotoDir === dir}
+                          onClick={() => void handleAnalyzePhoto(photo)}
+                          className="text-[10px] bg-violet-950/90 hover:bg-violet-900 disabled:opacity-50 text-violet-300 border border-violet-700/80 px-1.5 py-0.5 rounded flex items-center gap-1 font-semibold transition"
+                          title="Inspect this photo with Gemini Vision for defects and condition rating"
+                        >
+                          <Sparkles className="w-2.5 h-2.5" />
+                          {analyzingPhotoDir === dir ? 'Analyzing...' : 'AI Inspect'}
+                        </button>
                         <button
                           onClick={() => triggerCamera(dir)}
                           className="text-[10px] text-slate-400 hover:text-sky-300 font-medium"
@@ -1367,6 +1454,103 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
               );
             })}
           </div>
+
+          {photoAnalysisError && (
+            <div className="mt-3 text-xs text-rose-400 bg-rose-950/40 border border-rose-800 p-2.5 rounded-lg">
+              {photoAnalysisError}
+            </div>
+          )}
+
+          {photoAnalysisResult && (
+            <div className="mt-3 bg-violet-950/30 border border-violet-700/70 rounded-xl p-3 space-y-2.5">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs font-bold text-violet-200">
+                  <Sparkles className="w-3.5 h-3.5 text-violet-400" />
+                  <span>Gemini Vision ({photoAnalysisResult.direction} Photo)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPhotoAnalysisResult(null)}
+                  className="text-slate-400 hover:text-white p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                {photoAnalysisResult.summary}
+              </p>
+
+              {photoAnalysisResult.suggested_condition && (
+                <div className="flex items-center justify-between bg-slate-900/80 border border-slate-700/80 rounded-lg px-2.5 py-1.5 text-[11px]">
+                  <span className="text-slate-400">
+                    Suggested UAD Condition:{' '}
+                    <strong className="text-emerald-300">
+                      {photoAnalysisResult.suggested_condition}
+                    </strong>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleApplySuggestedCondition(photoAnalysisResult.suggested_condition!)
+                    }
+                    className="bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 rounded font-semibold transition"
+                  >
+                    Apply {photoAnalysisResult.suggested_condition}
+                  </button>
+                </div>
+              )}
+
+              {photoAnalysisResult.defects.length > 0 ? (
+                <div className="space-y-1.5">
+                  {photoAnalysisResult.defects.map((d, idx) => {
+                    const estUnit =
+                      d.action === 'Keep'
+                        ? 0
+                        : getAdjustedUnitPrice(d.trade_category, d.unit, costIndex);
+                    const estTotal = d.quantity * estUnit;
+                    return (
+                      <div
+                        key={idx}
+                        className="bg-slate-900/90 border border-slate-700/80 rounded-lg p-2 flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="font-semibold text-slate-200 truncate">
+                            <span className="text-amber-300">{d.action}:</span> {d.description}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {d.quantity} {d.unit} • {d.trade_category} •{' '}
+                            <span className="text-emerald-400 font-bold">
+                              ${estTotal.toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleAcceptSinglePhotoDefect(d, idx)}
+                          className="bg-sky-600 hover:bg-sky-500 text-white px-2 py-1 rounded font-semibold shrink-0 transition"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    onClick={handleAcceptAllPhotoDefects}
+                    className="w-full bg-violet-600 hover:bg-violet-500 text-white text-xs font-semibold py-1.5 rounded-lg transition"
+                  >
+                    + Add All ({photoAnalysisResult.defects.length}) Scope Items
+                  </button>
+                </div>
+              ) : (
+                <div className="text-[11px] text-emerald-300 font-mono">
+                  All proposed items added or no defects detected in this photo.
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Delete Room Button */}
@@ -1420,18 +1604,34 @@ export const RoomInspectionDrawer: React.FC<RoomInspectionDrawerProps> = ({
             </div>
 
             {/* Footer */}
-            <div className="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 font-mono">
-              <span>Timestamp: {new Date(previewPhoto.timestamp).toLocaleString()}</span>
-              <button
-                onClick={() => {
-                  triggerCamera(previewPhoto.direction);
-                  setPreviewPhoto(null);
-                }}
-                className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition"
-              >
-                <Camera className="w-3.5 h-3.5" />
-                Retake
-              </button>
+            <div className="p-2.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between gap-2 text-xs text-slate-400 font-mono">
+              <span className="truncate">
+                Timestamp: {new Date(previewPhoto.timestamp).toLocaleString()}
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = previewPhoto;
+                    setPreviewPhoto(null);
+                    void handleAnalyzePhoto(target);
+                  }}
+                  className="bg-violet-600 hover:bg-violet-500 text-white px-3 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  AI Inspect
+                </button>
+                <button
+                  onClick={() => {
+                    triggerCamera(previewPhoto.direction);
+                    setPreviewPhoto(null);
+                  }}
+                  className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition"
+                >
+                  <Camera className="w-3.5 h-3.5" />
+                  Retake
+                </button>
+              </div>
             </div>
           </div>
         </div>

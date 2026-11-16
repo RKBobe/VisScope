@@ -16,6 +16,7 @@ import {
   Plus,
   Trash2,
   Sparkles,
+  Printer,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -30,6 +31,7 @@ interface HeaderProps {
   onOpenProcurement: () => void;
   onOpenIngestion: () => void;
   onOpenPropertyRecord: () => void;
+  onOpenReport?: () => void;
   onSaveManual: () => void | Promise<void>;
 }
 
@@ -45,6 +47,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenProcurement,
   onOpenIngestion,
   onOpenPropertyRecord,
+  onOpenReport,
   onSaveManual,
 }) => {
   const [isExporting, setIsExporting] = useState(false);
@@ -304,6 +307,18 @@ export const Header: React.FC<HeaderProps> = ({
           </span>{' '}
           Order
         </button>
+
+        {/* Printable PDF Inspection Report Trigger */}
+        {onOpenReport && (
+          <button
+            onClick={onOpenReport}
+            title="Generate Printable PDF Property Inspection & Scope of Work Report"
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition"
+          >
+            <Printer className="w-3.5 h-3.5 text-sky-400" />
+            <span className="hidden sm:inline">PDF</span> Report
+          </button>
+        )}
 
         {/* Gemini Multimodal AI Settings Trigger */}
         {onOpenGeminiSettings && (

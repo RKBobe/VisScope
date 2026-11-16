@@ -7,7 +7,12 @@ import { calculateAnsiZ765GLA } from '../math/geometry';
 /**
  * Generates a standalone, standards-compliant SVG floor plan document string.
  */
-export function generateFloorplanSVG(project: SprocketProject): string {
+export function generateFloorplanSVG(
+  project: SprocketProject,
+  options?: { theme?: 'dark' | 'light'; hideHeader?: boolean }
+): string {
+  const isLight = options?.theme === 'light';
+  const hideHeader = Boolean(options?.hideHeader);
   const rooms = project.rooms;
   const ansiData = calculateAnsiZ765GLA(rooms, 6);
 
@@ -27,34 +32,48 @@ export function generateFloorplanSVG(project: SprocketProject): string {
   const width = Math.max(800, maxX - minX);
   const height = Math.max(600, maxY - minY);
 
+  const bgColor = isLight ? '#ffffff' : '#090d16';
+  const roomRectFill = isLight ? '#f8fafc' : '#1e293b';
+  const roomRectStroke = isLight ? '#0284c7' : '#38bdf8';
+  const roomLabelFill = isLight ? '#0f172a' : '#f8fafc';
+  const roomSubFill = isLight ? '#475569' : '#94a3b8';
+  const roomCostFill = isLight ? '#059669' : '#34d399';
+  const badgeFill = isLight ? '#ffffff' : '#0f172a';
+  const badgeStroke = isLight ? '#cbd5e1' : '#334155';
+  const headerFill = isLight ? '#0f172a' : '#e2e8f0';
+
   let svgContent = `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="${minX} ${minY} ${width} ${height}" width="100%" height="100%">
   <defs>
     <style>
-      .room-rect { fill: #1e293b; stroke: #38bdf8; stroke-width: 3; }
-      .room-rect:hover { fill: #334155; }
-      .room-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 14px; fill: #f8fafc; text-anchor: middle; }
-      .room-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 500; font-size: 11px; fill: #94a3b8; text-anchor: middle; }
-      .room-cost { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 600; font-size: 11px; fill: #34d399; text-anchor: middle; }
+      .room-rect { fill: ${roomRectFill}; stroke: ${roomRectStroke}; stroke-width: 3; }
+      .room-rect:hover { fill: ${isLight ? '#e2e8f0' : '#334155'}; }
+      .room-label { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 700; font-size: 14px; fill: ${roomLabelFill}; text-anchor: middle; }
+      .room-sub { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 500; font-size: 11px; fill: ${roomSubFill}; text-anchor: middle; }
+      .room-cost { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; font-weight: 600; font-size: 11px; fill: ${roomCostFill}; text-anchor: middle; }
       .door { stroke: #fbbf24; stroke-width: 3; fill: none; }
       .door-arc { stroke: #fbbf24; stroke-width: 1.5; stroke-dasharray: 4,4; fill: none; }
       .window { stroke: #60a5fa; stroke-width: 4; stroke-linecap: round; }
       .cased { stroke: #94a3b8; stroke-width: 2; stroke-dasharray: 3,3; }
       .ansi-shell { stroke: #f43f5e; stroke-width: 2.5; stroke-dasharray: 6,4; fill: none; }
-      .grid-line { stroke: #1e293b; stroke-width: 0.75; }
-      .header-text { font-family: sans-serif; font-size: 16px; font-weight: bold; fill: #e2e8f0; }
+      .grid-line { stroke: ${isLight ? '#e2e8f0' : '#1e293b'}; stroke-width: 0.75; }
+      .header-text { font-family: sans-serif; font-size: 16px; font-weight: bold; fill: ${headerFill}; }
     </style>
   </defs>
 
   <!-- Background Canvas -->
-  <rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="#090d16" />
-
+  <rect x="${minX}" y="${minY}" width="${width}" height="${height}" fill="${bgColor}" />
+${
+  !hideHeader
+    ? `
   <!-- Title / Legend Banner -->
   <g id="header-legend" transform="translate(${minX + 24}, ${minY + 36})">
     <text class="header-text">${escapeXml(project.name)} | ${escapeXml(project.address.street)}, ${escapeXml(project.address.city)}, ${escapeXml(project.address.state)} ${escapeXml(project.address.zip)}</text>
     <text y="20" class="room-sub">GLA: ${project.gla_sqft} SF (ANSI Z765) | GBA: ${project.gba_sqft} SF | Direct Cost: $${project.summary.direct_cost_subtotal.toLocaleString()}</text>
   </g>
-`;
+`
+    : ''
+}`;
 
   // Draw ANSI Z765 exterior shell if present
   if (ansiData.exterior_hull_bounds) {
@@ -82,7 +101,7 @@ export function generateFloorplanSVG(project: SprocketProject): string {
     <rect class="room-rect" x="${rx}" y="${ry}" width="${rw}" height="${rh}" rx="4" />
     
     <!-- Centroid Badge -->
-    <rect x="${cx - 65}" y="${cy - 30}" width="130" height="60" rx="6" fill="#0f172a" fill-opacity="0.9" stroke="#334155" stroke-width="1.5" />
+    <rect x="${cx - 65}" y="${cy - 30}" width="130" height="60" rx="6" fill="${badgeFill}" fill-opacity="${isLight ? '0.95' : '0.9'}" stroke="${badgeStroke}" stroke-width="1.5" />
     <text class="room-label" x="${cx}" y="${cy - 12}">${escapeXml(room.name)}</text>
     <text class="room-sub" x="${cx}" y="${cy + 6}">${room.dimensions.length_ft}' x ${room.dimensions.width_ft}' (${room.floor_area_sqft} SF)</text>
     <text class="room-cost" x="${cx}" y="${cy + 22}">Est: $${room.cost_rollup.room_total.toLocaleString()}</text>

@@ -990,3 +990,167 @@ Return a strict JSON object with keys:
 function cfgOrModelLabel(config?: GeminiConnectionConfig): string {
   return (config?.model || cachedConfig.model || DEFAULT_GEMINI_MODELS[0]).trim();
 }
+
+export interface PhotoDefectAnalysisResult {
+  summary: string;
+  suggested_condition?: ConditionClass;
+  defects: ParsedVoiceDefect[];
+}
+
+async function rasterizeDataUriIfNeeded(dataUri: string): Promise<{
+  inlineData: { mimeType: string; data: string } | null;
+  svgTextHint: string;
+}> {
+  if (!dataUri.startsWith('data:image/svg+xml')) {
+    return {
+      inlineData: parseDataUrl(dataUri),
+      svgTextHint: '',
+    };
+  }
+
+  let svgTextHint = '';
+  const commaIdx = dataUri.indexOf(',');
+  if (commaIdx !== -1) {
+    try {
+      const header = dataUri.slice(0, commaIdx);
+      const rawPayload = dataUri.slice(commaIdx + 1);
+      const decodedSvg = header.includes(';base64')
+        ? typeof atob === 'function'
+          ? atob(rawPayload)
+          : Buffer.from(rawPayload, 'base64').toString('utf-8')
+        : decodeURIComponent(rawPayload);
+      const textMatches = Array.from(decodedSvg.matchAll(/<text[^>]*>([^<]+)<\/text>/gi)).map(
+        (m) => m[1].trim()
+      );
+      svgTextHint = textMatches.join(' ').trim();
+    } catch {
+      svgTextHint = '';
+    }
+  }
+
+  if (typeof document === 'undefined' || typeof Image === 'undefined') {
+    return { inlineData: null, svgTextHint };
+  }
+
+  try {
+    const pngDataUrl = await new Promise<string | null>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 640;
+        canvas.height = 480;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(null);
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.onerror = () => resolve(null);
+      img.src = dataUri;
+    });
+
+    return {
+      inlineData: pngDataUrl ? parseDataUrl(pngDataUrl) : null,
+      svgTextHint,
+    };
+  } catch {
+    return { inlineData: null, svgTextHint };
+  }
+}
+
+/**
+ * Inspects a captured room/defect photo with Gemini Vision using room dimensions to propose
+ * condition ratings and structured rehab scope line items.
+ */
+export async function analyzeRoomPhotoWithGeminiVision(
+  params: {
+    photoDataUri: string;
+    direction: string;
+    roomContext?: RoomVoiceContext;
+  },
+  config?: GeminiConnectionConfig
+): Promise<PhotoDefectAnalysisResult> {
+  const { inlineData, svgTextHint } = await rasterizeDataUriIfNeeded(params.photoDataUri);
+  if (!inlineData && !svgTextHint) {
+    throw new Error('Could not decode photo image for Gemini Vision inspection.');
+  }
+
+  const photoPrompt = `You are a certified residential property appraiser & rehab estimator.
+Inspect this ${params.direction}-facing room photo carefully for visible damage, wear, deferred maintenance, or outdated finishes.
+${buildRoomContextText(params.roomContext)}
+Return a strict JSON object with keys:
+- "summary": concise 1-2 sentence inspection finding describing visible materials and condition
+- "suggested_condition": one of "Class 1", "Class 2", "Class 3", "Class 4", "Class 5", "Class 6" (1=New/Excellent, 3=Average, 5=Poor, 6=Unsound)
+- "defects": array of concrete repair/replacement scope objects (empty array if no visible defects), each with:
+  - "action": one of "Keep", "Remove", "Replace", "Add"
+  - "trade_category": one of ${VALID_TRADE_CATEGORIES.map((t) => `"${t}"`).join(', ')}
+  - "quantity": positive number (sized sensibly using the room's floor_area_sqft or net_wall_area_sqft when full wall/floor scope applies)
+  - "unit": one of "SF", "LF", "EA", "ALLOWANCE"
+  - "description": clear scope item description
+  - "confidence": number 0.0 to 1.0
+Return valid JSON only.`;
+
+  const parts: GeminiInlinePart[] = [
+    {
+      text: `Analyze ${params.direction} photo for ${
+        params.roomContext?.name || 'room'
+      }.${svgTextHint ? ` Placeholder label: "${svgTextHint}".` : ''}`,
+    },
+  ];
+  if (inlineData) {
+    parts.push({ inlineData });
+  }
+
+  const rawJson = await callGeminiGenerateContent({
+    systemInstruction: photoPrompt,
+    parts,
+    config,
+  });
+
+  const data = JSON.parse(rawJson) as Record<string, unknown>;
+  const summary =
+    typeof data.summary === 'string' && data.summary.trim()
+      ? data.summary.trim()
+      : 'Inspection complete.';
+
+  const suggested_condition =
+    typeof data.suggested_condition === 'string' && /[1-6]/.test(data.suggested_condition)
+      ? (normalizeQualityClass(data.suggested_condition) as ConditionClass)
+      : undefined;
+
+  const rawDefects = Array.isArray(data.defects)
+    ? (data.defects as Array<Record<string, unknown>>)
+    : [];
+
+  const defects: ParsedVoiceDefect[] = rawDefects
+    .filter((d) => d && typeof d === 'object')
+    .map((item) => {
+      const qtyNum = Number(item.quantity);
+      const quantity = Number.isFinite(qtyNum) && qtyNum > 0 ? qtyNum : 1;
+      const confNum = Number(item.confidence);
+      const confidence =
+        Number.isFinite(confNum) && confNum > 0 && confNum <= 1 ? confNum : 0.88;
+      const desc =
+        typeof item.description === 'string' && item.description.trim()
+          ? item.description.trim()
+          : `${params.direction} wall repair`;
+
+      return {
+        rawTranscript: `Photo inspection (${params.direction}): ${desc}`,
+        action: normalizeScopeAction(item.action),
+        quantity,
+        unit: normalizeUnit(item.unit),
+        trade_category: normalizeTradeCategory(item.trade_category),
+        description: desc,
+        confidence,
+      };
+    });
+
+  return {
+    summary,
+    suggested_condition,
+    defects,
+  };
+}

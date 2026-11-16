@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  analyzeRoomPhotoWithGeminiVision,
   extractDocumentWithGeminiVision,
   fetchAvailableGeminiModels,
   GeminiConnectionConfig,
@@ -439,5 +440,64 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(fetchSpy.mock.calls[1][0]).toBe(
       'https://generativelanguage.googleapis.com/v1beta/models?key=test-key-123'
     );
+  });
+
+  it('analyzes a room photo with Gemini Vision to propose condition rating and rehab scope items', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    summary: 'Peeling paint and stained drywall visible near ceiling corner.',
+                    suggested_condition: 'Class 4',
+                    defects: [
+                      {
+                        action: 'Replace',
+                        trade_category: 'Drywall',
+                        quantity: 32,
+                        unit: 'SF',
+                        description: 'Replace water-damaged drywall patch',
+                        confidence: 0.91,
+                      },
+                      {
+                        action: 'Replace',
+                        trade_category: 'Painting',
+                        quantity: 608,
+                        unit: 'SF',
+                        description: 'Prime and repaint room walls',
+                        confidence: 0.95,
+                      },
+                    ],
+                  }),
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    } as Response);
+
+    const result = await analyzeRoomPhotoWithGeminiVision(
+      {
+        photoDataUri: 'data:image/jpeg;base64,/9j/4AAQSkZJRg==',
+        direction: 'North',
+        roomContext: { name: 'Living Room', floor_area_sqft: 320, net_wall_area_sqft: 608 },
+      },
+      { apiKey: 'test-key-123', model: 'gemini-2.5-flash', enabled: true }
+    );
+
+    expect(result.summary).toContain('Peeling paint');
+    expect(result.suggested_condition).toBe('Class 4');
+    expect(result.defects).toHaveLength(2);
+    expect(result.defects[0].trade_category).toBe('Drywall');
+    expect(result.defects[1].quantity).toBe(608);
+
+    const body = JSON.parse((fetchSpy.mock.calls[0][1] as RequestInit).body as string);
+    const imgPart = body.contents[0].parts.find((p: any) => p.inlineData);
+    expect(imgPart.inlineData.mimeType).toBe('image/jpeg');
   });
 });

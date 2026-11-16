@@ -36,3 +36,40 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+/* Print styling for professional PDF & physical reports */
+@media print {
+  @page {
+    margin: 12mm;
+    size: letter portrait;
+  }
+
+  html,
+  body {
+    overflow: visible !important;
+    height: auto !important;
+    width: 100% !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  #root {
+    overflow: visible !important;
+    height: auto !important;
+    width: 100% !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-page-break {
+    break-before: page;
+    page-break-before: always;
+  }
+
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}

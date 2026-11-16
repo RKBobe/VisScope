@@ -118,4 +118,11 @@ describe('MeshEngine Bundle Serializer', () => {
     expect(svg).toContain('Kitchen &amp; Dining &lt;Main&gt;');
     expect(svg).not.toContain('Kitchen & Dining <Main>');
   });
+
+  it('supports light theme and hidden header for printable reports', () => {
+    const lightSvg = generateFloorplanSVG(sampleProject, { theme: 'light', hideHeader: true });
+    expect(lightSvg).toContain('fill="#ffffff"');
+    expect(lightSvg).not.toContain('id="header-legend"');
+    expect(lightSvg).toContain('Living Room');
+  });
 });
