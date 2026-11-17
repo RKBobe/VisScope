@@ -62,9 +62,22 @@ export const Header: React.FC<HeaderProps> = ({
   const toolsMenuRef = useRef<HTMLDivElement>(null);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const projectMenuRef = useRef<HTMLDivElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const exportTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clean up any pending timeouts on unmount
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (exportTimerRef.current) clearTimeout(exportTimerRef.current);
+    };
+  }, []);
+
+  // Conditionally listen for click-outside and escape key only when a menu is open
+  useEffect(() => {
+    if (!showToolsMenu && !showExportMenu && !showProjectMenu) return;
+
+    const handlePointerDown = (event: PointerEvent | MouseEvent) => {
       const target = event.target as Node;
       if (toolsMenuRef.current && !toolsMenuRef.current.contains(target)) {
         setShowToolsMenu(false);
@@ -85,26 +98,32 @@ export const Header: React.FC<HeaderProps> = ({
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('pointerdown', handlePointerDown);
     document.addEventListener('keydown', handleKeyDown);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('pointerdown', handlePointerDown);
       document.removeEventListener('keydown', handleKeyDown);
     };
-  }, []);
+  }, [showToolsMenu, showExportMenu, showProjectMenu]);
 
   const handleManualSaveClick = async () => {
-    await onSaveManual();
-    setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 2500);
+    try {
+      await onSaveManual();
+      setSaveSuccess(true);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      console.error('Manual save failed:', err);
+    }
   };
 
   const handleExportMeshEngineBundle = async () => {
+    let url: string | null = null;
     try {
       setIsExporting(true);
       const zipBlob = await createMeshEngineBundle(project);
-      const url = URL.createObjectURL(zipBlob);
+      url = URL.createObjectURL(zipBlob);
       const link = document.createElement('a');
       link.href = url;
       link.setAttribute(
@@ -116,10 +135,14 @@ export const Header: React.FC<HeaderProps> = ({
       document.body.removeChild(link);
 
       setExportSuccess(true);
-      setTimeout(() => setExportSuccess(false), 4000);
+      if (exportTimerRef.current) clearTimeout(exportTimerRef.current);
+      exportTimerRef.current = setTimeout(() => setExportSuccess(false), 4000);
     } catch (err) {
       console.error('Failed to create bundle:', err);
     } finally {
+      if (url) {
+        URL.revokeObjectURL(url);
+      }
       setIsExporting(false);
     }
   };
@@ -144,6 +167,8 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
               <button
                 type="button"
+                aria-haspopup="menu"
+                aria-expanded={showProjectMenu}
                 onClick={() => {
                   setShowProjectMenu(!showProjectMenu);
                   setShowToolsMenu(false);
@@ -162,7 +187,10 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
 
             {showProjectMenu && (
-              <div className="absolute left-0 top-full mt-2 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden">
+              <div
+                role="menu"
+                className="absolute left-0 top-full mt-2 w-80 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden"
+              >
                 <div className="px-3 py-2 bg-slate-800/80 border-b border-slate-700 flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-300">
                   <span>Saved Inspection Projects</span>
                   {onCreateNewProject && (
@@ -191,6 +219,7 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <button
                           type="button"
+                          role="menuitem"
                           onClick={() => {
                             onSelectProject?.(proj);
                             setShowProjectMenu(false);
@@ -293,6 +322,7 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Manual Save Button */}
         <button
           onClick={handleManualSaveClick}
+          aria-label="Save Project to IndexedDB"
           className={`p-2 rounded-xl transition flex items-center gap-1 text-xs font-semibold ${
             saveSuccess
               ? 'text-emerald-400 bg-emerald-950/60 border border-emerald-800/70'
@@ -345,6 +375,8 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="relative" ref={toolsMenuRef}>
           <button
             type="button"
+            aria-haspopup="menu"
+            aria-expanded={showToolsMenu}
             onClick={() => {
               setShowToolsMenu(!showToolsMenu);
               setShowExportMenu(false);
@@ -367,11 +399,15 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {showToolsMenu && (
-            <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800"
+            >
               <div className="p-1">
                 {/* Property Record Card & Data Fields Trigger */}
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     setShowToolsMenu(false);
                     onOpenPropertyRecord();
@@ -394,6 +430,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Craftsman Valuation Modal Trigger */}
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     setShowToolsMenu(false);
                     onOpenValuation();
@@ -416,6 +453,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Materials Supply Retailer Procurement Trigger */}
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     setShowToolsMenu(false);
                     onOpenProcurement();
@@ -443,7 +481,10 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="relative" ref={exportMenuRef}>
           <button
             type="button"
+            aria-haspopup="menu"
+            aria-expanded={showExportMenu}
             onClick={() => {
+              setExportSuccess(false);
               setShowExportMenu(!showExportMenu);
               setShowToolsMenu(false);
               setShowProjectMenu(false);
@@ -484,12 +525,16 @@ export const Header: React.FC<HeaderProps> = ({
           </button>
 
           {showExportMenu && (
-            <div className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800">
+            <div
+              role="menu"
+              className="absolute right-0 top-full mt-2 w-64 bg-slate-900 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden divide-y divide-slate-800"
+            >
               <div className="p-1">
                 {/* Printable PDF Inspection Report Trigger */}
                 {onOpenReport && (
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={() => {
                       setShowExportMenu(false);
                       onOpenReport();
@@ -513,6 +558,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* MeshEngine Export Drop Bundle */}
                 <button
                   type="button"
+                  role="menuitem"
                   onClick={() => {
                     setShowExportMenu(false);
                     handleExportMeshEngineBundle();
