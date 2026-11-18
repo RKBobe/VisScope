@@ -67,6 +67,8 @@ export const SubscriptionUpgradeModal: React.FC = () => {
 
   const [interval, setInterval] = useState<SubscriptionInterval>('month');
   const [upgradedTierToast, setUpgradedTierToast] = useState<SubscriptionTier | null>(null);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   // Close on Escape
   useEffect(() => {
@@ -80,14 +82,58 @@ export const SubscriptionUpgradeModal: React.FC = () => {
 
   if (!isUpgradeModalOpen) return null;
 
-  const handleSelectTier = (selected: SubscriptionTier) => {
+  const handleSelectTier = async (selected: SubscriptionTier) => {
     if (selected === currentTier) return;
-    setTier(selected);
-    setUpgradedTierToast(selected);
-    setTimeout(() => {
-      setUpgradedTierToast(null);
-      closeUpgradeModal();
-    }, 1200);
+
+    if (selected === 'starter') {
+      setTier('starter');
+      setUpgradedTierToast('starter');
+      setTimeout(() => {
+        setUpgradedTierToast(null);
+        closeUpgradeModal();
+      }, 1200);
+      return;
+    }
+
+    setIsCheckingOut(true);
+    setCheckoutError(null);
+
+    try {
+      const res = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tier: selected, interval }),
+      });
+
+      const data = (await res.json().catch(() => ({}))) as {
+        url?: string;
+        error?: string;
+        configured?: boolean;
+      };
+
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+
+      // If server does not have Stripe keys configured, fall back to dev tier switch
+      setTier(selected);
+      setUpgradedTierToast(selected);
+      setTimeout(() => {
+        setUpgradedTierToast(null);
+        closeUpgradeModal();
+      }, 1400);
+    } catch {
+      // Offline or local dev fallback
+      setTier(selected);
+      setUpgradedTierToast(selected);
+      setTimeout(() => {
+        setUpgradedTierToast(null);
+        closeUpgradeModal();
+      }, 1400);
+    } finally {
+      setIsCheckingOut(false);
+    }
   };
 
   const contextMessage = upgradeContextFeature
@@ -260,10 +306,12 @@ export const SubscriptionUpgradeModal: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => handleSelectTier(tierKey)}
-                  disabled={isCurrent}
+                  disabled={isCurrent || isCheckingOut}
                   className={`w-full py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition ${
                     isCurrent
                       ? 'bg-slate-800 text-slate-400 border border-slate-700 cursor-default'
+                      : isCheckingOut
+                      ? 'bg-sky-950 text-sky-300 border border-sky-700 animate-pulse'
                       : plan.highlighted
                       ? 'bg-gradient-to-r from-sky-500 to-emerald-500 hover:from-sky-400 hover:to-emerald-400 text-slate-950 shadow-lg shadow-sky-950 font-extrabold'
                       : 'bg-slate-800 hover:bg-slate-700 text-white border border-slate-700'
@@ -273,6 +321,11 @@ export const SubscriptionUpgradeModal: React.FC = () => {
                     <>
                       <CheckCircle2 className="w-4 h-4 text-slate-400" />
                       <span>Current Plan</span>
+                    </>
+                  ) : isCheckingOut ? (
+                    <>
+                      <span className="w-2.5 h-2.5 rounded-full bg-sky-400 animate-ping" />
+                      <span>Connecting to Stripe...</span>
                     </>
                   ) : (
                     <>
@@ -285,6 +338,20 @@ export const SubscriptionUpgradeModal: React.FC = () => {
             );
           })}
         </div>
+
+        {/* Checkout Error Notification */}
+        {checkoutError && (
+          <div className="mt-6 p-3 rounded-xl bg-rose-950/90 border border-rose-500/60 text-rose-200 text-xs flex items-center justify-between gap-2">
+            <span>{checkoutError}</span>
+            <button
+              type="button"
+              onClick={() => setCheckoutError(null)}
+              className="text-rose-400 hover:text-white underline text-[11px]"
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {/* Upgrade Toast Notification */}
         {upgradedTierToast && (

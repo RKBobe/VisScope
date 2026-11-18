@@ -54,6 +54,7 @@ import { GeminiSettingsModal } from './components/modals/GeminiSettingsModal';
 import { InspectionReportModal } from './components/modals/InspectionReportModal';
 import { SubscriptionUpgradeModal } from './components/modals/SubscriptionUpgradeModal';
 import { SubscriptionProvider } from './context/SubscriptionContext';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const AppContent: React.FC = () => {
   const [project, setProject] = useState<SprocketProject>(createInitialProject());
@@ -491,9 +492,11 @@ const AppContent: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <SubscriptionProvider>
-      <AppContent />
-    </SubscriptionProvider>
+    <ErrorBoundary>
+      <SubscriptionProvider>
+        <AppContent />
+      </SubscriptionProvider>
+    </ErrorBoundary>
   );
 };
 
