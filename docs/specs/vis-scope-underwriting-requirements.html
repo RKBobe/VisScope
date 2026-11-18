@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Vis-Scope Office Edition - Underwriting Requirements Elicitation</title>
+  <style>
+    @page {
+      size: letter;
+      margin: 0.6in 0.6in 0.7in 0.6in;
+      @bottom-right {
+        content: "Page " counter(page);
+        font-size: 8pt;
+        color: #64748b;
+      }
+    }
+    
+    * {
+      box-sizing: border-box;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+      background: #ffffff;
+      line-height: 1.5;
+      font-size: 9.5pt;
+      margin: 0;
+      padding: 0;
+    }
+
+    /* Header & Document Control */
+    .doc-header {
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 14px;
+      margin-bottom: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+
+    .brand-title {
+      font-size: 20pt;
+      font-weight: 800;
+      color: #0f172a;
+      letter-spacing: -0.5px;
+      margin: 0;
+    }
+
+    .brand-title span {
+      color: #0284c7;
+      font-weight: 300;
+    }
+
+    .doc-subtitle {
+      font-size: 11pt;
+      font-weight: 600;
+      color: #475569;
+      margin: 3px 0 0 0;
+    }
+
+    .doc-meta {
+      text-align: right;
+      font-size: 8pt;
+      color: #64748b;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 7.5pt;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .badge-primary { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
+    .badge-success { background: #dcfce7; color: #15803d; border: 1px solid #bbf7d0; }
+    .badge-amber { background: #fef3c7; color: #b45309; border: 1px solid #fde68a; }
+
+    /* Section Typography */
+    h2 {
+      font-size: 13pt;
+      font-weight: 700;
+      color: #0f172a;
+      border-bottom: 1.5px solid #e2e8f0;
+      padding-bottom: 5px;
+      margin-top: 22px;
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    h2 .sec-num {
+      background: #0f172a;
+      color: #ffffff;
+      font-size: 8.5pt;
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 700;
+    }
+
+    h3 {
+      font-size: 10.5pt;
+      font-weight: 700;
+      color: #1e293b;
+      margin-top: 14px;
+      margin-bottom: 6px;
+    }
+
+    p {
+      margin: 0 0 8px 0;
+      color: #334155;
+    }
+
+    /* Cards & Containers */
+    .callout {
+      background: #f8fafc;
+      border-left: 4px solid #0284c7;
+      padding: 10px 14px;
+      border-radius: 0 6px 6px 0;
+      margin: 12px 0;
+      font-size: 9pt;
+    }
+
+    .callout-title {
+      font-weight: 700;
+      color: #0f172a;
+      margin-bottom: 3px;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin: 12px 0;
+    }
+
+    .panel {
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: #ffffff;
+    }
+
+    .panel-header {
+      font-weight: 700;
+      font-size: 9pt;
+      color: #0f172a;
+      border-bottom: 1px solid #f1f5f9;
+      padding-bottom: 4px;
+      margin-bottom: 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0 16px 0;
+      font-size: 8.5pt;
+    }
+
+    th {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      text-align: left;
+      padding: 7px 10px;
+      border: 1px solid #cbd5e1;
+    }
+
+    td {
+      padding: 6px 10px;
+      border: 1px solid #e2e8f0;
+      vertical-align: top;
+      color: #334155;
+    }
+
+    tr:nth-child(even) td {
+      background: #f8fafc;
+    }
+
+    /* Question / Decision Block */
+    .question-block {
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 12px 14px;
+      margin-bottom: 14px;
+      page-break-inside: avoid;
+    }
+
+    .question-num {
+      font-size: 8pt;
+      font-weight: 800;
+      color: #0284c7;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .question-text {
+      font-size: 10pt;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 2px 0 8px 0;
+    }
+
+    .options-list {
+      list-style: none;
+      padding-left: 0;
+      margin: 6px 0 10px 0;
+    }
+
+    .options-list li {
+      margin-bottom: 6px;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 9pt;
+    }
+
+    .checkbox-box {
+      width: 13px;
+      height: 13px;
+      border: 1.5px solid #64748b;
+      border-radius: 3px;
+      margin-top: 2px;
+      flex-shrink: 0;
+    }
+
+    .response-line {
+      border-bottom: 1px dashed #94a3b8;
+      height: 22px;
+      margin-top: 6px;
+    }
+
+    /* Page Break Utilities */
+    .page-break {
+      page-break-before: always;
+    }
+
+    .footer-note {
+      font-size: 8pt;
+      color: #94a3b8;
+      text-align: center;
+      margin-top: 24px;
+      border-top: 1px solid #e2e8f0;
+      padding-top: 8px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- DOCUMENT HEADER -->
+  <div class="doc-header">
+    <div>
+      <h1 class="brand-title">Vis-<span>Scope</span></h1>
+      <div class="doc-subtitle">Office Edition: Underwriting & Collateral Desk Review Platform</div>
+      <div style="font-size: 8.5pt; color: #64748b; margin-top: 4px;">
+        Business Architecture & Stakeholder Requirements Elicitation Document
+      </div>
+    </div>
+    <div class="doc-meta">
+      <div><strong>Version:</strong> 1.0 (Draft for Elicitation)</div>
+      <div><strong>Date:</strong> November 2026</div>
+      <div><strong>Author:</strong> Vis-Scope System Architecture Team</div>
+      <div style="margin-top: 4px;">
+        <span class="badge badge-primary">Stakeholder Review</span>
+        <span class="badge badge-amber">Confidential</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXECUTIVE SUMMARY -->
+  <div class="callout">
+    <div class="callout-title">Document Purpose & Scope</div>
+    This document outlines the theoretical architecture, workflow specifications, and structured elicitation questions for extending the Vis-Scope inspection ecosystem into an <strong>Office Edition</strong> designed specifically for <strong>Collateral Risk Analysts, Appraisal Desk Reviewers, Underwriting Managers, and Chief Credit Officers</strong>. Stakeholders are invited to review the proposed functional modules and complete the decision questionnaires in Section 5.
+  </div>
+
+  <!-- SECTION 1: FIELD VS OFFICE DELINEATION -->
+  <h2><span class="sec-num">01</span> Operational Context: Field Capture vs. Office Adjudication</h2>
+  <p>
+    The existing <strong>Vis-Scope Field Client (Core v1.0)</strong> is engineered for high-mobility, touch-first jobsites—allowing inspectors and contractors to model ANSI Z765 vector floor plans, photograph defects, dictating scopes of work, and generate material takeoffs. The <strong>Office Edition</strong> serves an entirely distinct operational purpose: <em>collateral risk validation, public record discrepancy reconciliation, cost audit, and loan/rehab decisioning</em>.
+  </p>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 20%;">Operational Vector</th>
+        <th style="width: 40%;">Vis-Scope Field Client (Existing)</th>
+        <th style="width: 40%;">Vis-Scope Office Edition (Proposed)</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Primary User</strong></td>
+        <td>Field Inspector, Fee Appraiser, General Contractor</td>
+        <td>Collateral Underwriter, Desk Reviewer, Risk Officer</td>
+      </tr>
+      <tr>
+        <td><strong>Operating Environment</strong></td>
+        <td>iPad / Android Tablet / Ruggedized Laptop on jobsite</td>
+        <td>Multi-monitor Desktop Office Workstation (Chrome/Edge)</td>
+      </tr>
+      <tr>
+        <td><strong>Core Activity</strong></td>
+        <td>Data capture, perimeter measurement, defect photo tagging</td>
+        <td>Audit reconciliation, risk scoring, variance adjudication</td>
+      </tr>
+      <tr>
+        <td><strong>Primary Concern</strong></td>
+        <td>Field speed, touch accuracy, offline local storage resilience</td>
+        <td>Fraud prevention, unpermitted space, valuation accuracy</td>
+      </tr>
+      <tr>
+        <td><strong>Primary Deliverables</strong></td>
+        <td>MeshEngine CAD ZIP, Lowe's B2B pick sheet, draft report</td>
+        <td>Underwriting Sign-Off Memo, Escrow Determination, MISMO Review XML</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 2: SYSTEM ARCHITECTURE -->
+  <h2><span class="sec-num">02</span> Architectural Topology: Monorepo Persona Routing</h2>
+  <p>
+    To eliminate schema drift and guarantee zero duplication of core calculation logic, the Office Edition will be integrated directly into the Vis-Scope codebase under a dedicated route (<code>/office</code> or <code>/review</code>) backed by role-based access controls (RBAC).
+  </p>
+
+  <div class="grid-2">
+    <div class="panel">
+      <div class="panel-header">
+        <span>Shared Core Engine (Reused)</span>
+        <span class="badge badge-success">Zero Rebuild</span>
+      </div>
+      <ul style="padding-left: 16px; margin: 0; font-size: 8.5pt; color: #334155;">
+        <li><strong>ANSI Z765 Standards Engine:</strong> Consistent GLA calculation between field & office.</li>
+        <li><strong>Craftsman 2026 Valuation Index:</strong> Shared unit cost multipliers.</li>
+        <li><strong>Gemini 3.0 Multimodal Pipeline:</strong> AI extraction for tax cards and blueprint PDFs.</li>
+        <li><strong>UAD 3.6 / MISMO 3.4 Serializers:</strong> Standards-compliant appraisal export packages.</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span>Office-Specific Layer (New)</span>
+        <span class="badge badge-primary">Under Construction</span>
+      </div>
+      <ul style="padding-left: 16px; margin: 0; font-size: 8.5pt; color: #334155;">
+        <li><strong>Multi-Project Pipeline Queue:</strong> Triage, sorting, and SLA assignment.</li>
+        <li><strong>Split-Screen Auditor:</strong> Vector floor plan vs. county tax card side-by-side.</li>
+        <li><strong>Automated Underwriting Rules (AUR):</strong> Instant discrepancy & risk flags.</li>
+        <li><strong>Redline Adjustment Layer:</strong> Non-destructive underwriter cost overrides.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- SECTION 3: CORE FUNCTIONAL MODULES -->
+  <h2><span class="sec-num">03</span> Proposed Office Functional Modules</h2>
+
+  <h3>Module A: Triage Pipeline & Inspection Queue</h3>
+  <p>
+    Underwriters manage portfolios, not single projects. The landing view provides an enterprise table with live search, SLA countdowns, and risk scores:
+  </p>
+  <ul>
+    <li><strong>Configurable Filters:</strong> By Loan Officer, Loan Number, Property State, Inspector Name, and Urgency.</li>
+    <li><strong>Automated Risk Score Badge:</strong> Immediate calculation based on square footage variance, C5/C6 condition ratings, and repair costs exceeding valuation thresholds.</li>
+    <li><strong>Status Lifecycle:</strong> <code>Submitted</code> &rarr; <code>In Desk Review</code> &rarr; <code>Flagged / Pending Revision</code> &rarr; <code>Approved</code> &rarr; <code>Declined</code>.</li>
+  </ul>
+
+  <h3>Module B: Split-Screen Discrepancy Reconciliation Auditor</h3>
+  <p>
+    The signature desktop interface for appraisal compliance and fraud detection:
+  </p>
+  <div class="grid-2">
+    <div class="panel" style="border-left: 3px solid #0284c7;">
+      <div class="panel-header">Pane 1: Field Inspection Reality</div>
+      <div style="font-size: 8.5pt;">
+        &bull; Interactive vector CAD floor plan with room polygons.<br>
+        &bull; ANSI Gross Living Area (GLA) breakdown by level.<br>
+        &bull; Geotagged high-resolution defect and finish photos.<br>
+        &bull; Field appraiser condition ratings (C1 through C6).
+      </div>
+    </div>
+    <div class="panel" style="border-left: 3px solid #059669;">
+      <div class="panel-header">Pane 2: Official Public Record / Blueprints</div>
+      <div style="font-size: 8.5pt;">
+        &bull; Ingested County Assessor property card.<br>
+        &bull; Historical MLS listings and prior appraisal data.<br>
+        &bull; Permitted architectural blueprint drawings.<br>
+        &bull; Automated optical comparison highlighting variances.
+      </div>
+    </div>
+  </div>
+
+  <h3>Module C: Automated Underwriting Rules Engine (AUR)</h3>
+  <p>
+    Configurable risk checks that automatically flag loans requiring senior committee review:
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 25%;">Rule Trigger</th>
+        <th style="width: 35%;">Threshold Condition</th>
+        <th style="width: 40%;">Underwriting Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>GLA Variance Threshold</strong></td>
+        <td>Field GLA differs from County Tax Record by &gt; 10.0%</td>
+        <td>Flags potential unpermitted addition; triggers permit verification.</td>
+      </tr>
+      <tr>
+        <td><strong>Cost-to-Cure Ratio</strong></td>
+        <td>Total repair estimate exceeds 15.0% of As-Is Value</td>
+        <td>Mandatory repair escrow holdback requirement generated.</td>
+      </tr>
+      <tr>
+        <td><strong>Severe Condition Class</strong></td>
+        <td>Any room/element graded Condition C5 or C6</td>
+        <td>Hard loan stop; requires engineer inspection or structural escrow.</td>
+      </tr>
+      <tr>
+        <td><strong>Room Count Disparity</strong></td>
+        <td>Bedroom or full bath count does not match public record</td>
+        <td>Requires underwriter reconciliation note before sign-off.</td>
+      </tr>
+      <tr>
+        <td><strong>Below-Grade GLA Trap</strong></td>
+        <td>Walk-out basement included in Above-Grade GLA</td>
+        <td>Automatic ANSI Z765 compliance violation flag; reclassifies square footage.</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>Module D: Non-Destructive Underwriter Adjustment Layer</h3>
+  <p>
+    Underwriters frequently reject contractor estimates or adjust labor rates. The system preserves the original field submission while providing a formal adjustment ledger:
+  </p>
+  <ul>
+    <li><strong>Dual-Column Scope Accounting:</strong> Displays <code>Field Estimate ($)</code> alongside <code>Underwriter Allowed ($)</code>.</li>
+    <li><strong>Mandatory Reason Codes:</strong> Selecting an adjustment requires choosing an approved rationale (e.g., <em>"Local trade index correction"</em>, <em>"Cosmetic only—deferred maintenance"</em>, <em>"Excessive contractor margin"</em>).</li>
+    <li><strong>Automated Escrow Calculator:</strong> Automatically computes the lender holdback reserve (e.g., 110% to 150% of approved repairs).</li>
+  </ul>
+
+  <h3>Module E: Decision Memo & Secondary Market Compliance Exports</h3>
+  <p>
+    Replaces contractor bills with institutional lending documentation:
+  </p>
+  <ul>
+    <li><strong>Underwriting Decision Memo (PDF):</strong> Formal, signed risk determination document itemizing approved repairs, required escrows, and loan conditions.</li>
+    <li><strong>Fannie Mae Form 1004D / Completion Certificate Integration:</strong> Pre-populated inspection audit.</li>
+    <li><strong>MISMO 3.4 / 3.6 Desk Review XML:</strong> Direct export for ingestion into Encompass, Black Knight, or proprietary Loan Origination Systems (LOS).</li>
+  </ul>
+
+  <div class="page-break"></div>
+
+  <!-- SECTION 4: COLLABORATION LOOP -->
+  <h2><span class="sec-num">04</span> Field &harr; Office Collaboration & Re-Inspection Loop</h2>
+  <p>
+    When an underwriter identifies an unverified defect or unpermitted space, they need to request revisions without playing phone tag:
+  </p>
+  
+  <div class="panel" style="background: #f8fafc; border: 1px solid #cbd5e1; margin-bottom: 16px;">
+    <div style="font-weight: 700; color: #0f172a; margin-bottom: 6px;">The 4-Step Re-Inspection Dispatch Loop</div>
+    <ol style="padding-left: 20px; margin: 0; font-size: 8.5pt; color: #334155;">
+      <li><strong>Underwriter Pins Clarification Request:</strong> Underwriter clicks directly on a room (e.g., "Primary Bathroom") and requests: <em>"Photograph subfloor water meter connection—suspected active leak."</em></li>
+      <li><strong>Field Notification:</strong> The field inspector's tablet receives a push notification and marks the project status as <code>Action Required</code>.</li>
+      <li><strong>Targeted Capture:</strong> The field app opens directly to the requested photo slot, requiring GPS and timestamp verification.</li>
+      <li><strong>Instant Office Resolution:</strong> The uploaded photo automatically satisfies the underwriting condition in the office view.</li>
+    </ol>
+  </div>
+
+  <!-- SECTION 5: STAKEHOLDER QUESTIONNAIRE -->
+  <h2><span class="sec-num">05</span> Stakeholder Requirements Questionnaire & Decision Matrix</h2>
+  <p>
+    Please review the 10 targeted questions below. Your input will directly shape the feature prioritization, data models, and integrations for Vis-Scope Office Edition.
+  </p>
+
+  <!-- Q1 -->
+  <div class="question-block">
+    <div class="question-num">Question 1 &bull; Lending Environment & Core Audience</div>
+    <div class="question-text">What is your primary lending / risk profile?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>Private / Hard Money / Bridge Lending:</strong> Heavy focus on rehab budget accuracy, draw schedules, and After-Repair Value (ARV).</li>
+      <li><div class="checkbox-box"></div> <strong>Conventional Mortgage (Fannie/Freddie GSE):</strong> Strict compliance with ANSI Z765 GLA, UAD 3.6, and Fannie Mae Form 1004/1004D.</li>
+      <li><div class="checkbox-box"></div> <strong>Appraisal Management Company (AMC):</strong> High-volume desk reviews, quality control audits, and appraiser rebuttal management.</li>
+      <li><div class="checkbox-box"></div> <strong>Insurance / Loss Mitigation:</strong> Pre-loss vs. post-loss scope of work and depreciation schedules.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes / Custom Needs:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <!-- Q2 -->
+  <div class="question-block">
+    <div class="question-num">Question 2 &bull; Data Synchronization Topology</div>
+    <div class="question-text">How should inspection packages travel between Field Inspectors and Underwriters?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>Real-Time Cloud Central Database (Recommended):</strong> Field inspector taps "Submit", instantly appearing in the underwriter queue.</li>
+      <li><div class="checkbox-box"></div> <strong>File-Based MeshEngine (.ZIP) Upload:</strong> Underwriters drag-and-drop the field bundle exported from the field app.</li>
+      <li><div class="checkbox-box"></div> <strong>Hybrid / LOS Bridge:</strong> Field app exports to Loan Origination System (e.g. Encompass), which triggers Vis-Scope via webhook.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <!-- Q3 -->
+  <div class="question-block">
+    <div class="question-num">Question 3 &bull; Permitted vs. Unpermitted GLA Variance Tolerances</div>
+    <div class="question-text">What variance between field-measured GLA and public records should trigger an automatic flag?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>Strict (5.0%):</strong> Any discrepancy over 5% flags for permit verification.</li>
+      <li><div class="checkbox-box"></div> <strong>Standard Industry Tolerance (10.0%):</strong> Discrepancies between 5% and 10% warn; &gt; 10% hard flags.</li>
+      <li><div class="checkbox-box"></div> <strong>Absolute Square Footage:</strong> Flag only if variance exceeds 200 sq. ft. regardless of percentage.</li>
+      <li><div class="checkbox-box"></div> <strong>Custom Configurable:</strong> Set per loan product or client profile.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <!-- Q4 -->
+  <div class="question-block">
+    <div class="question-num">Question 4 &bull; Scope & Cost Adjustments Authority</div>
+    <div class="question-text">What authority should underwriters have to alter contractor / inspector scopes?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>Adjudication Layer Only (Preserve Original):</strong> Underwriter enters overrides alongside original field bids without editing original nodes.</li>
+      <li><div class="checkbox-box"></div> <strong>Direct Editing with Audit History:</strong> Underwriter can directly modify quantities, with full versioned revision tracking.</li>
+      <li><div class="checkbox-box"></div> <strong>Reject & Re-Submit Only:</strong> Underwriter cannot adjust numbers; must reject package back to field inspector with comments.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <div class="page-break"></div>
+
+  <!-- Q5 -->
+  <div class="question-block">
+    <div class="question-num">Question 5 &bull; Required Holdback / Escrow Calculations</div>
+    <div class="question-text">How should repair holdbacks/escrows be determined automatically?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>Flat Multiplier:</strong> Standard 150% of total estimated cost to cure.</li>
+      <li><div class="checkbox-box"></div> <strong>Tiered by Trade Category:</strong> 110% for cosmetic trades (paint, carpet); 150% for mechanical/structural trades (HVAC, foundation).</li>
+      <li><div class="checkbox-box"></div> <strong>Discretionary Underwriter Input:</strong> Underwriter types exact holdback dollar amount per item.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <!-- Q6 -->
+  <div class="question-block">
+    <div class="question-num">Question 6 &bull; Loan Origination System (LOS) Integrations</div>
+    <div class="question-text">Which enterprise platforms need direct two-way API integration?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>ICE Mortgage Technology (Encompass):</strong> Pipeline sync, eFolder document push, loan status updates.</li>
+      <li><div class="checkbox-box"></div> <strong>Black Knight / Empower:</strong> Core loan servicing and underwriting feeds.</li>
+      <li><div class="checkbox-box"></div> <strong>Custom REST / Webhooks:</strong> Proprietary internal loan origination or appraisal CRM.</li>
+      <li><div class="checkbox-box"></div> <strong>Standalone First Phase:</strong> Export PDF/XML manually; add LOS API connections in Phase 2.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <!-- Q7 -->
+  <div class="question-block">
+    <div class="question-num">Question 7 &bull; Automated Defect Vision Verification (Gemini 3.0)</div>
+    <div class="question-text">How should AI assist the underwriter during desk review?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>Photo Defect Verification:</strong> Gemini 3.0 analyzes field photos to verify whether defect severity matches C4 vs C5/C6 claims.</li>
+      <li><div class="checkbox-box"></div> <strong>Blueprint vs. CAD Cross-Check:</strong> AI compares blueprint dimensions to inspector's drawn vector canvas.</li>
+      <li><div class="checkbox-box"></div> <strong>Permit Document Ingestion:</strong> AI scans uploaded permit PDFs and cross-references closed dates against renovation years.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <!-- Q8 -->
+  <div class="question-block">
+    <div class="question-num">Question 8 &bull; Role-Based Access Controls (RBAC) Hierarchy</div>
+    <div class="question-text">What user permission levels are required within your organization?</div>
+    <ul class="options-list">
+      <li><div class="checkbox-box"></div> <strong>Tier 1: Field Inspector:</strong> Create, draw, photograph, and submit projects; read-only on underwriting decisions.</li>
+      <li><div class="checkbox-box"></div> <strong>Tier 2: Desk Reviewer / Credit Analyst:</strong> Audit, annotate, apply rules, calculate holdbacks, recommend sign-off.</li>
+      <li><div class="checkbox-box"></div> <strong>Tier 3: Senior Underwriting Manager / Chief Credit Officer:</strong> Final sign-off, override hard loan-stops, approve policy exceptions.</li>
+      <li><div class="checkbox-box"></div> <strong>Tier 4: Enterprise Admin:</strong> Manage fee multipliers, LOS API keys, user seats, and billing.</li>
+    </ul>
+    <div style="font-size: 8pt; color: #64748b;">Stakeholder Notes:</div>
+    <div class="response-line"></div>
+  </div>
+
+  <!-- SECTION 6: IMPLEMENTATION ROADMAP -->
+  <h2><span class="sec-num">06</span> Phased Implementation Roadmap</h2>
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 15%;">Phase</th>
+        <th style="width: 35%;">Deliverables & Capabilities</th>
+        <th style="width: 25%;">Estimated Scope</th>
+        <th style="width: 25%;">Dependencies</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>Phase 1: Core Desk Review</strong></td>
+        <td>
+          &bull; Split-screen Auditor (Field CAD vs. Tax Card)<br>
+          &bull; Pipeline table with filtering & search<br>
+          &bull; Variance calculators (GLA, Room Count)
+        </td>
+        <td>Sprint 1 &ndash; 2</td>
+        <td>Field Core v1.0 (Ready)</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 2: Adjudication & AUR</strong></td>
+        <td>
+          &bull; Automated Underwriting Rules Engine (AUR)<br>
+          &bull; Underwriter Adjustment Ledger & Escrow Calc<br>
+          &bull; Underwriting Decision Memo PDF Export
+        </td>
+        <td>Sprint 3 &ndash; 4</td>
+        <td>Phase 1 completion</td>
+      </tr>
+      <tr>
+        <td><strong>Phase 3: Real-Time Sync & LOS</strong></td>
+        <td>
+          &bull; Two-way Field &harr; Office Re-Inspection Dispatch<br>
+          &bull; Central cloud synchronization (Postgres/Supabase)<br>
+          &bull; Encompass / MISMO 3.6 API connectors
+        </td>
+        <td>Sprint 5 &ndash; 6</td>
+        <td>Enterprise LOS specs</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- SECTION 7: STAKEHOLDER SIGN-OFF BLOCK -->
+  <h2><span class="sec-num">07</span> Stakeholder Review & Sign-Off</h2>
+  <p>
+    Please complete the review block below upon completion of the questionnaire:
+  </p>
+
+  <div style="margin-top: 18px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 14px; background: #f8fafc;">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+      <div>
+        <div style="font-size: 8.5pt; font-weight: 700; color: #475569;">REVIEWED BY (NAME & TITLE):</div>
+        <div style="border-bottom: 1px solid #94a3b8; height: 28px; margin-top: 4px;"></div>
+      </div>
+      <div>
+        <div style="font-size: 8.5pt; font-weight: 700; color: #475569;">ORGANIZATION / FIRM:</div>
+        <div style="border-bottom: 1px solid #94a3b8; height: 28px; margin-top: 4px;"></div>
+      </div>
+      <div style="margin-top: 10px;">
+        <div style="font-size: 8.5pt; font-weight: 700; color: #475569;">SIGNATURE:</div>
+        <div style="border-bottom: 1px solid #94a3b8; height: 28px; margin-top: 4px;"></div>
+      </div>
+      <div style="margin-top: 10px;">
+        <div style="font-size: 8.5pt; font-weight: 700; color: #475569;">DATE OF REVIEW:</div>
+        <div style="border-bottom: 1px solid #94a3b8; height: 28px; margin-top: 4px;"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer-note">
+    Vis-Scope Platform &bull; Proprietary & Confidential &bull; Generated for Stakeholder Elicitation &bull; vis-scope.onrender.com
+  </div>
+
+</body>
+</html>
