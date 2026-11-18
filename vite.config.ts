@@ -51,7 +51,7 @@ function attachGeminiProxyMiddleware(
   middlewares.use('/api/gemini', async (req, res) => {
     const env = loadEnv(mode, process.cwd(), '');
     const serverKey = (env.GEMINI_API_KEY || process.env.GEMINI_API_KEY || '').trim();
-    const defaultModel = (env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+    const defaultModel = (env.GEMINI_MODEL || process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
 
     const authHeader =
       typeof req.headers.authorization === 'string' ? req.headers.authorization : '';

@@ -19,7 +19,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const serverKey = (process.env.GEMINI_API_KEY || '').trim();
-  const defaultModel = (process.env.GEMINI_MODEL || 'gemini-2.5-flash').trim();
+  const defaultModel = (process.env.GEMINI_MODEL || 'gemini-2.0-flash').trim();
 
   const authHeader = typeof req.headers.authorization === 'string' ? req.headers.authorization : '';
   const bearerMatch = authHeader.match(/^Bearer\s+(.+)$/i);

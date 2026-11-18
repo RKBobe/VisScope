@@ -30,10 +30,9 @@ export type GeminiInlinePart =
   | { inlineData: { mimeType: string; data: string } };
 
 export const DEFAULT_GEMINI_MODELS: string[] = [
-  'gemini-2.5-flash',
-  'gemini-3-flash-preview',
-  'gemini-2.5-pro',
   'gemini-2.0-flash',
+  'gemini-3-flash-preview',
+  'gemini-2.0-pro',
 ];
 
 const STORAGE_GEMINI_KEY = 'datamesh_sprocket_gemini_config_v1';
@@ -342,7 +341,7 @@ function modelSortRank(modelId: string): number {
   const lower = modelId.toLowerCase();
   if (lower.includes('gemini-4')) return 0;
   if (lower.includes('gemini-3')) return 1;
-  if (lower.includes('gemini-2.5')) return 2;
+  if (lower.includes('gemini-2.0')) return 2;
   return 3;
 }
 
@@ -534,7 +533,7 @@ async function sendDirectGoogleGenerateContent(params: {
 
   if (response.status === 400) {
     const compatModel = /(tts|image|preview)/i.test(params.model)
-      ? 'gemini-2.5-flash'
+      ? 'gemini-2.0-flash'
       : params.model;
     response = await fetch(buildDirectUrl(compatModel), {
       method: 'POST',
