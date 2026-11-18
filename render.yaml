@@ -1,10 +1,14 @@
 services:
   - type: web
     name: vis-scope
-    env: static
+    env: node
+    plan: free
     buildCommand: npm run build
-    staticPublishPath: ./dist
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: GEMINI_MODEL
+        value: gemini-3.0-flash
+      - key: GEMINI_API_KEY
+        sync: false
