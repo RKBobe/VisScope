@@ -9,16 +9,28 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   </React.StrictMode>
 );
 
+// Request persistent browser storage to prevent mobile Safari/Chromium from evicting field inspection data
+if (typeof navigator !== 'undefined' && 'storage' in navigator && navigator.storage.persist) {
+  navigator.storage
+    .persist()
+    .then((persistent) => {
+      if (persistent) {
+        console.log('[Vis-Scope] Persistent storage granted by browser.');
+      }
+    })
+    .catch(() => {});
+}
+
 // Register PWA Service Worker for offline field capability
-if ('serviceWorker' in navigator && process.env.NODE_ENV === 'production') {
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')
       .then((registration) => {
-        console.log('Sprocket PWA Service Worker registered:', registration.scope);
+        console.log('[Vis-Scope] PWA Service Worker registered:', registration.scope);
       })
       .catch((err) => {
-        console.warn('Sprocket Service Worker registration failed:', err);
+        console.warn('[Vis-Scope] Service Worker registration failed:', err);
       });
   });
 }

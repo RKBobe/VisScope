@@ -24,15 +24,15 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
             supportedGenerationMethods: ['embedContent'],
           },
           {
-            name: 'models/gemini-2.5-flash-preview-tts',
+            name: 'models/gemini-3.0-flash-preview-tts',
             supportedGenerationMethods: ['generateContent'],
           },
           {
-            name: 'models/gemini-2.5-flash-image',
+            name: 'models/gemini-3.0-flash-image',
             supportedGenerationMethods: ['generateContent'],
           },
           {
-            name: 'models/gemini-2.5-flash',
+            name: 'models/gemini-3.0-flash',
             supportedGenerationMethods: ['generateContent'],
           },
           {
@@ -56,9 +56,9 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     const res = await fetchAvailableGeminiModels(config);
     expect(res.ok).toBe(true);
     expect(res.models).toEqual([
-      'gemini-3-flash-preview',
       'gemini-3.1-pro-preview',
-      'gemini-2.5-flash',
+      'gemini-3-flash-preview',
+      'gemini-3.0-flash',
     ]);
     expect(res.models).not.toContain('embedding-001');
     expect(fetchSpy.mock.calls[0][0]).toBe(
@@ -235,7 +235,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     const parsed = await parseVoiceScopeWithGemini(
       'Water damage near the window, repaint all the walls in this room',
       { name: 'Living Room', floor_area_sqft: 320, net_wall_area_sqft: 608 },
-      { apiKey: 'test-key-123', model: 'gemini-2.5-flash', enabled: true },
+      { apiKey: 'test-key-123', model: 'gemini-3.0-flash', enabled: true },
       true
     );
 
@@ -258,7 +258,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
         json: async () => ({
           models: [
             {
-              name: 'models/gemini-2.5-flash',
+              name: 'models/gemini-3.0-flash',
               supportedGenerationMethods: ['generateContent'],
             },
           ],
@@ -299,7 +299,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(parsed?.trade_category).toBe('Painting');
     expect(fetchSpy).toHaveBeenCalledTimes(3);
     expect(fetchSpy.mock.calls[2][0]).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-key-123'
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent?key=test-key-123'
     );
   });
 
@@ -332,7 +332,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     const res = await transcribeAndParseAudioWithGemini(
       'data:audio/webm;codecs=opus;base64,GkXfo59ChoEBQveBAULygQRC84EIQoKIbWF0cm9za2FCh4EEQoWBAhhTgGc=',
       { name: 'Living Room', floor_area_sqft: 320, net_wall_area_sqft: 608 },
-      { apiKey: 'test-key-123', model: 'gemini-2.5-flash', enabled: true }
+      { apiKey: 'test-key-123', model: 'gemini-3.0-flash', enabled: true }
     );
 
     expect(res.transcript).toContain('repaint all the walls');
@@ -379,7 +379,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     const parsed = await parseVoiceScopeWithGemini(
       'Repaint all walls in this room',
       { name: 'Living Room', floor_area_sqft: 320, net_wall_area_sqft: 608 },
-      { apiKey: 'test-key-123', model: 'gemini-3-flash-preview', enabled: true },
+      { apiKey: 'test-key-123', model: 'gemini-3.0-flash-image', enabled: true },
       true
     );
 
@@ -390,7 +390,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
     expect(retryBody.systemInstruction).toBeUndefined();
     expect(retryBody.generationConfig.responseMimeType).toBeUndefined();
     expect(fetchSpy.mock.calls[1][0]).toBe(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=test-key-123'
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.0-flash:generateContent?key=test-key-123'
     );
   });
 
@@ -420,7 +420,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
         json: async () => ({
           models: [
             {
-              name: 'models/gemini-2.5-flash',
+              name: 'models/gemini-3.0-flash',
               supportedGenerationMethods: ['generateContent'],
             },
           ],
@@ -429,13 +429,13 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
 
     const res = await fetchAvailableGeminiModels({
       apiKey: 'test-key-123',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.0-flash',
       proxyUrl: '/api/gemini',
       enabled: true,
     });
 
     expect(res.ok).toBe(true);
-    expect(res.models).toEqual(['gemini-2.5-flash']);
+    expect(res.models).toEqual(['gemini-3.0-flash']);
     expect(fetchSpy).toHaveBeenCalledTimes(2);
     expect(fetchSpy.mock.calls[1][0]).toBe(
       'https://generativelanguage.googleapis.com/v1beta/models?key=test-key-123'
@@ -487,7 +487,7 @@ describe('Gemini Multimodal AI Client (Option C Hybrid)', () => {
         direction: 'North',
         roomContext: { name: 'Living Room', floor_area_sqft: 320, net_wall_area_sqft: 608 },
       },
-      { apiKey: 'test-key-123', model: 'gemini-2.5-flash', enabled: true }
+      { apiKey: 'test-key-123', model: 'gemini-3.0-flash', enabled: true }
     );
 
     expect(result.summary).toContain('Peeling paint');

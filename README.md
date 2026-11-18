@@ -1,8 +1,8 @@
-# DataMesh Sprocket Core System
+# Vis-Scope Core System
 
 > Professional-grade, touch-friendly residential property inspection, parametric floor plan modeling, voice-guided deficiency scoping, and renovation costing application.
 
-**DataMesh Sprocket** operates as a standalone field client for tape & eyeball property inspections and an upstream ingestion provider for the **MeshEngine / DataMesh Labs** ecosystem.
+**Vis-Scope** operates as a standalone field client for tape & eyeball property inspections and an upstream ingestion provider for the **MeshEngine / DataMesh Labs** ecosystem.
 
 ---
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'datamesh-sprocket-v1';
+const CACHE_NAME = 'vis-scope-v1';
 const ASSETS_TO_CACHE = [
   '/',
   '/index.html',
@@ -27,6 +27,23 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // Never cache backend API calls (e.g. /api/stripe, /api/gemini)
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // Handle SPA navigation requests offline
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => {
+        return caches.match('/index.html') as Promise<Response>;
+      })
+    );
+    return;
+  }
+
   // Stale-while-revalidate strategy for local assets
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
@@ -35,7 +52,7 @@ self.addEventListener('fetch', (event) => {
           if (
             networkResponse &&
             networkResponse.status === 200 &&
-            networkResponse.type === 'basic'
+            (networkResponse.type === 'basic' || networkResponse.type === 'cors')
           ) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {

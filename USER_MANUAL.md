@@ -1,4 +1,4 @@
-# DataMesh Sprocket Core System | Field User Manual & Operations Guide
+# Vis-Scope Core System | Field User Manual & Operations Guide
 
 > **Version:** 1.0.0  
 > **Target Audience:** Field Inspectors, Appraisers, Cost Estimators, and General Contractors  
@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary & Field Philosophy
 
-**DataMesh Sprocket** is a touch-friendly, offline-first residential inspection, parametric floor plan modeling, voice-guided deficiency scoping, and renovation costing application.
+**Vis-Scope** is a touch-friendly, offline-first residential inspection, parametric floor plan modeling, voice-guided deficiency scoping, and renovation costing application.
 
 ```mermaid
 flowchart TD
