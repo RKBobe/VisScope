@@ -55,7 +55,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenReport,
   onSaveManual,
 }) => {
-  const { tier, plan, hasAccess, openUpgradeModal } = useSubscription();
+  const { tier, plan, hasAccess, openUpgradeModal, isPartner } = useSubscription();
 
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -176,15 +176,23 @@ export const Header: React.FC<HeaderProps> = ({
                 type="button"
                 onClick={() => openUpgradeModal()}
                 className={`text-[11px] px-2 py-0.5 rounded-lg flex items-center gap-1 font-semibold transition border ${
-                  tier === 'starter'
+                  isPartner
+                    ? 'bg-emerald-950/80 hover:bg-emerald-900/90 text-emerald-300 border-emerald-500/70 shadow-sm shadow-emerald-950'
+                    : tier === 'starter'
                     ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-600/40'
                     : tier === 'pro'
                     ? 'bg-sky-950/60 hover:bg-sky-900/70 text-sky-300 border-sky-600/50'
                     : 'bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border-emerald-600/50'
                 }`}
-                title={`Vis-Scope Plan: ${plan.name}. Click to view upgrade options.`}
+                title={
+                  isPartner
+                    ? 'Vis-Scope VIP Partner License: Full Team features unlocked.'
+                    : `Vis-Scope Plan: ${plan.name}. Click to view upgrade options.`
+                }
               >
-                {tier === 'team' ? (
+                {isPartner ? (
+                  <Building2 className="w-3 h-3 text-emerald-400" />
+                ) : tier === 'team' ? (
                   <Building2 className="w-3 h-3 text-emerald-400" />
                 ) : (
                   <Sparkles
@@ -193,8 +201,8 @@ export const Header: React.FC<HeaderProps> = ({
                     }`}
                   />
                 )}
-                <span>{plan.name}</span>
-                {tier === 'starter' && (
+                <span>{isPartner ? 'Partner VIP' : plan.name}</span>
+                {tier === 'starter' && !isPartner && (
                   <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded uppercase font-bold">
                     Upgrade
                   </span>

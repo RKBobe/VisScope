@@ -5,11 +5,21 @@ import { render, screen, act, cleanup } from '@testing-library/react';
 import { SubscriptionProvider, useSubscription } from '../SubscriptionContext';
 
 const TestConsumer: React.FC = () => {
-  const { tier, setTier, hasAccess, openUpgradeModal, isUpgradeModalOpen } = useSubscription();
+  const {
+    tier,
+    setTier,
+    hasAccess,
+    openUpgradeModal,
+    isUpgradeModalOpen,
+    isPartner,
+    unlockPartnerAccess,
+    revokePartnerAccess,
+  } = useSubscription();
 
   return (
     <div>
       <span data-testid="tier">{tier}</span>
+      <span data-testid="is-partner">{isPartner ? 'true' : 'false'}</span>
       <span data-testid="can-export-zip">
         {hasAccess('export_meshengine_zip') ? 'true' : 'false'}
       </span>
@@ -28,6 +38,21 @@ const TestConsumer: React.FC = () => {
       </button>
       <button onClick={() => openUpgradeModal('export_meshengine_zip')} data-testid="open-modal">
         Open Modal
+      </button>
+      <button
+        onClick={() => unlockPartnerAccess('VISPARTNER')}
+        data-testid="unlock-partner"
+      >
+        Unlock Partner
+      </button>
+      <button
+        onClick={() => unlockPartnerAccess('INVALID_KEY')}
+        data-testid="unlock-partner-invalid"
+      >
+        Unlock Invalid
+      </button>
+      <button onClick={() => revokePartnerAccess()} data-testid="revoke-partner">
+        Revoke Partner
       </button>
     </div>
   );
@@ -81,5 +106,49 @@ describe('SubscriptionContext - Multi-Tier Entitlements', () => {
     });
 
     expect(screen.getByTestId('is-modal-open').textContent).toBe('open');
+  });
+
+  it('permanently unlocks full Team access when valid partner code is entered', () => {
+    render(
+      <SubscriptionProvider initialTier="starter">
+        <TestConsumer />
+      </SubscriptionProvider>
+    );
+
+    expect(screen.getByTestId('tier').textContent).toBe('starter');
+    expect(screen.getByTestId('is-partner').textContent).toBe('false');
+
+    act(() => {
+      screen.getByTestId('unlock-partner').click();
+    });
+
+    expect(screen.getByTestId('tier').textContent).toBe('team');
+    expect(screen.getByTestId('is-partner').textContent).toBe('true');
+    expect(screen.getByTestId('can-export-zip').textContent).toBe('true');
+    expect(screen.getByTestId('can-export-unwatermarked-pdf').textContent).toBe('true');
+    expect(screen.getByTestId('can-download-procurement').textContent).toBe('true');
+
+    // Revoke partner access
+    act(() => {
+      screen.getByTestId('revoke-partner').click();
+    });
+
+    expect(screen.getByTestId('tier').textContent).toBe('starter');
+    expect(screen.getByTestId('is-partner').textContent).toBe('false');
+  });
+
+  it('rejects invalid partner codes without modifying tier', () => {
+    render(
+      <SubscriptionProvider initialTier="starter">
+        <TestConsumer />
+      </SubscriptionProvider>
+    );
+
+    act(() => {
+      screen.getByTestId('unlock-partner-invalid').click();
+    });
+
+    expect(screen.getByTestId('tier').textContent).toBe('starter');
+    expect(screen.getByTestId('is-partner').textContent).toBe('false');
   });
 });

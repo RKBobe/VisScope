@@ -97,4 +97,30 @@ describe('SubscriptionUpgradeModal Component', () => {
 
     expect(screen.queryByRole('dialog')).toBeNull();
   });
+
+  it('allows unlocking VIP partner access via license code form', () => {
+    render(
+      <SubscriptionProvider initialTier="starter">
+        <ModalOpener />
+      </SubscriptionProvider>
+    );
+
+    fireEvent.click(screen.getByTestId('open-general'));
+    expect(screen.getByRole('dialog')).toBeDefined();
+
+    // Click to open partner unlock form
+    const partnerButton = screen.getByText('Have a Partner Key or Enterprise Access Code?');
+    fireEvent.click(partnerButton);
+
+    // Enter valid partner code
+    const input = screen.getByPlaceholderText('e.g. VISPARTNER');
+    fireEvent.change(input, { target: { value: 'VISPARTNER' } });
+
+    // Submit form
+    const submitButton = screen.getByText('Activate VIP Access');
+    fireEvent.click(submitButton);
+
+    // Expect success toast to appear
+    expect(screen.getByText(/Switched active tier to/i)).toBeDefined();
+  });
 });

@@ -9,6 +9,7 @@ import {
   ArrowRight,
   ShieldCheck,
   CheckCircle2,
+  Key,
 } from 'lucide-react';
 import { useSubscription } from '../../context/SubscriptionContext';
 import {
@@ -63,12 +64,18 @@ export const SubscriptionUpgradeModal: React.FC = () => {
     isUpgradeModalOpen,
     closeUpgradeModal,
     upgradeContextFeature,
+    isPartner,
+    unlockPartnerAccess,
+    revokePartnerAccess,
   } = useSubscription();
 
   const [interval, setInterval] = useState<SubscriptionInterval>('month');
   const [upgradedTierToast, setUpgradedTierToast] = useState<SubscriptionTier | null>(null);
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [showPartnerUnlock, setShowPartnerUnlock] = useState(false);
+  const [partnerKeyCode, setPartnerKeyCode] = useState('');
+  const [partnerKeyError, setPartnerKeyError] = useState<string | null>(null);
 
   // Close on Escape
   useEffect(() => {
@@ -157,6 +164,40 @@ export const SubscriptionUpgradeModal: React.FC = () => {
         >
           <X className="w-5 h-5" />
         </button>
+
+        {/* VIP Partner Active Banner */}
+        {isPartner && (
+          <div className="mb-6 p-4 rounded-xl bg-gradient-to-r from-emerald-950/90 to-teal-950/90 border border-emerald-500/60 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-emerald-900/60 border border-emerald-500/40 shrink-0 text-emerald-400">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-bold text-white">VIP Partner License Active</h4>
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                    Lifetime Full Access
+                  </span>
+                </div>
+                <p className="text-xs text-emerald-200/80 mt-0.5">
+                  Your partner access is active. All Vis-Scope Team Edition features, CAD/XML exports, and AI models are permanently unlocked on this device without requiring a subscription.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                revokePartnerAccess();
+                setUpgradedTierToast('starter');
+                setTimeout(() => setUpgradedTierToast(null), 1200);
+              }}
+              className="text-[11px] text-slate-400 hover:text-rose-300 underline shrink-0 transition"
+              title="Reset to default starter plan"
+            >
+              Reset License
+            </button>
+          </div>
+        )}
 
         {/* Feature-Triggered Banner */}
         {contextMessage && (
@@ -363,6 +404,87 @@ export const SubscriptionUpgradeModal: React.FC = () => {
             </span>
           </div>
         )}
+
+        {/* Partner & Enterprise License Key Activation */}
+        <div className="mt-8 pt-5 border-t border-slate-800">
+          {!showPartnerUnlock ? (
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <button
+                type="button"
+                onClick={() => setShowPartnerUnlock(true)}
+                className="text-sky-400 hover:text-sky-300 flex items-center gap-1.5 font-medium transition"
+              >
+                <Key className="w-3.5 h-3.5 text-sky-400" />
+                <span>Have a Partner Key or Enterprise Access Code?</span>
+              </button>
+              <span className="text-slate-500 text-[11px] font-mono">
+                Permanent VIP access without subscription
+              </span>
+            </div>
+          ) : (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                setPartnerKeyError(null);
+                const success = unlockPartnerAccess(partnerKeyCode);
+                if (success) {
+                  setUpgradedTierToast('team');
+                  setShowPartnerUnlock(false);
+                  setPartnerKeyCode('');
+                  setTimeout(() => {
+                    setUpgradedTierToast(null);
+                    closeUpgradeModal();
+                  }, 1200);
+                } else {
+                  setPartnerKeyError(
+                    'Invalid partner access code. Please verify your code and try again.'
+                  );
+                }
+              }}
+              className="bg-slate-950/80 p-4 rounded-xl border border-slate-800 space-y-3"
+            >
+              <div className="flex items-center justify-between">
+                <label
+                  htmlFor="partner-code-input"
+                  className="text-xs font-semibold text-white flex items-center gap-1.5"
+                >
+                  <Key className="w-3.5 h-3.5 text-sky-400" />
+                  <span>Enter Partner / Enterprise License Code</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowPartnerUnlock(false);
+                    setPartnerKeyError(null);
+                  }}
+                  className="text-slate-500 hover:text-slate-300 text-xs"
+                >
+                  Cancel
+                </button>
+              </div>
+              <div className="flex gap-2">
+                <input
+                  id="partner-code-input"
+                  type="text"
+                  value={partnerKeyCode}
+                  onChange={(e) => setPartnerKeyCode(e.target.value)}
+                  placeholder="e.g. VISPARTNER"
+                  className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white uppercase placeholder-slate-500 focus:outline-none focus:border-sky-500 font-mono"
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-slate-950 font-bold px-4 py-1.5 rounded-lg text-xs transition shadow-sm"
+                >
+                  Activate VIP Access
+                </button>
+              </div>
+              {partnerKeyError && (
+                <p className="text-rose-400 text-[11px] font-medium">{partnerKeyError}</p>
+              )}
+            </form>
+          )}
+        </div>
 
         {/* Footer Guarantee & Quick Dev Switcher */}
         <div className="mt-8 pt-6 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
