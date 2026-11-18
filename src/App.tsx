@@ -52,8 +52,10 @@ import { DocumentIngestionModal } from './components/modals/DocumentIngestionMod
 import { PropertyRecordModal } from './components/modals/PropertyRecordModal';
 import { GeminiSettingsModal } from './components/modals/GeminiSettingsModal';
 import { InspectionReportModal } from './components/modals/InspectionReportModal';
+import { SubscriptionUpgradeModal } from './components/modals/SubscriptionUpgradeModal';
+import { SubscriptionProvider } from './context/SubscriptionContext';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [project, setProject] = useState<SprocketProject>(createInitialProject());
   const [savedProjects, setSavedProjects] = useState<SprocketProject[]>([]);
   const [geminiConfig, setGeminiConfig] = useState<GeminiConnectionConfig>(() =>
@@ -480,7 +482,18 @@ export const App: React.FC = () => {
         isOpen={isReportOpen}
         onClose={() => setIsReportOpen(false)}
       />
+
+      {/* Subscription Tiers & Upgrade Modal */}
+      <SubscriptionUpgradeModal />
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <SubscriptionProvider>
+      <AppContent />
+    </SubscriptionProvider>
   );
 };
 

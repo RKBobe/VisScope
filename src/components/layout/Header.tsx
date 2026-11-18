@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { SprocketProject } from '../../types/sprocket';
 import { createMeshEngineBundle } from '../../services/exporters/bundleSerializer';
+import { useSubscription } from '../../context/SubscriptionContext';
 import {
   Compass,
   FileArchive,
@@ -19,6 +20,8 @@ import {
   Printer,
   SlidersHorizontal,
   Download,
+  Lock,
+  Building2,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -52,6 +55,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenReport,
   onSaveManual,
 }) => {
+  const { tier, plan, hasAccess, openUpgradeModal } = useSubscription();
+
   const [isExporting, setIsExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -128,7 +133,7 @@ export const Header: React.FC<HeaderProps> = ({
       link.href = url;
       link.setAttribute(
         'download',
-        `DataMesh_Sprocket_Bundle_${project.project_id}_${project.address.zip}.zip`
+        `Vis_Scope_Bundle_${project.project_id}_${project.address.zip}.zip`
       );
       document.body.appendChild(link);
       link.click();
@@ -160,11 +165,41 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="relative" ref={projectMenuRef}>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-sm tracking-wide text-white">
-                DataMesh <span className="text-sky-400 font-light">Sprocket</span>
+                Vis-<span className="text-sky-400 font-light">Scope</span>
               </span>
               <span className="text-[10px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded border border-slate-700 font-mono">
                 Core v1.0
               </span>
+
+              {/* Subscription Tier Pill */}
+              <button
+                type="button"
+                onClick={() => openUpgradeModal()}
+                className={`text-[11px] px-2 py-0.5 rounded-lg flex items-center gap-1 font-semibold transition border ${
+                  tier === 'starter'
+                    ? 'bg-amber-950/40 hover:bg-amber-900/60 text-amber-300 border-amber-600/40'
+                    : tier === 'pro'
+                    ? 'bg-sky-950/60 hover:bg-sky-900/70 text-sky-300 border-sky-600/50'
+                    : 'bg-emerald-950/60 hover:bg-emerald-900/70 text-emerald-300 border-emerald-600/50'
+                }`}
+                title={`Vis-Scope Plan: ${plan.name}. Click to view upgrade options.`}
+              >
+                {tier === 'team' ? (
+                  <Building2 className="w-3 h-3 text-emerald-400" />
+                ) : (
+                  <Sparkles
+                    className={`w-3 h-3 ${
+                      tier === 'starter' ? 'text-amber-400' : 'text-sky-400'
+                    }`}
+                  />
+                )}
+                <span>{plan.name}</span>
+                {tier === 'starter' && (
+                  <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1 rounded uppercase font-bold">
+                    Upgrade
+                  </span>
+                )}
+              </button>
               <button
                 type="button"
                 aria-haspopup="menu"
@@ -561,22 +596,36 @@ export const Header: React.FC<HeaderProps> = ({
                   role="menuitem"
                   onClick={() => {
                     setShowExportMenu(false);
+                    if (!hasAccess('export_meshengine_zip')) {
+                      openUpgradeModal('export_meshengine_zip');
+                      return;
+                    }
                     handleExportMeshEngineBundle();
                   }}
                   disabled={isExporting}
-                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition text-xs group disabled:opacity-50"
+                  className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-800 text-slate-200 flex items-center justify-between gap-2.5 transition text-xs group disabled:opacity-50"
                 >
-                  <div className="w-7 h-7 rounded-lg bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center shrink-0">
-                    <FileArchive className="w-3.5 h-3.5 text-emerald-400" />
-                  </div>
-                  <div className="min-w-0">
-                    <div className="font-semibold text-white group-hover:text-emerald-300 transition">
-                      MeshEngine Drop (.ZIP)
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-950/60 border border-emerald-800/60 flex items-center justify-center shrink-0">
+                      <FileArchive className="w-3.5 h-3.5 text-emerald-400" />
                     </div>
-                    <div className="text-[10px] text-slate-400 truncate">
-                      Complete project bundle & CAD assets
+                    <div className="min-w-0">
+                      <div className="font-semibold text-white group-hover:text-emerald-300 transition flex items-center gap-1.5">
+                        <span>MeshEngine Drop (.ZIP)</span>
+                        {!hasAccess('export_meshengine_zip') && (
+                          <span className="text-[9px] bg-sky-950 text-sky-400 border border-sky-600/60 px-1 py-0.2 rounded font-bold uppercase tracking-wider">
+                            PRO
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-[10px] text-slate-400 truncate">
+                        Complete project bundle & CAD assets
+                      </div>
                     </div>
                   </div>
+                  {!hasAccess('export_meshengine_zip') && (
+                    <Lock className="w-3.5 h-3.5 text-slate-500 group-hover:text-sky-400 shrink-0 transition" />
+                  )}
                 </button>
               </div>
             </div>

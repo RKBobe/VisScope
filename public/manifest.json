@@ -1,6 +1,7 @@
 {
-  "name": "DataMesh Sprocket",
-  "short_name": "Sprocket",
+  "name": "Vis-Scope",
+  "short_name": "Vis-Scope",
+  "description": "Vis-Scope - Professional Field Inspection & Floor Plan Modeler",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#090d16",

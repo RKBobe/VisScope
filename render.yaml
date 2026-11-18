@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: datamesh-sprocket
+    name: vis-scope
     env: static
     buildCommand: npm run build
     staticPublishPath: ./dist

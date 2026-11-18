@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { Header } from '../Header';
 import { createInitialProject } from '../../../services/storage/projectStore';
 import * as bundleSerializer from '../../../services/exporters/bundleSerializer';
+import { SubscriptionProvider } from '../../../context/SubscriptionContext';
 
 describe('Header Component - Interactive Toolbar Actions & Dropdown Navigation', () => {
   const dummyProject = createInitialProject();
@@ -11,6 +12,9 @@ describe('Header Component - Interactive Toolbar Actions & Dropdown Navigation',
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.clear();
+    }
   });
 
   it('renders pinned buttons: Save, Ingest File, and Gemini AI directly on the bar', () => {
@@ -187,7 +191,36 @@ describe('Header Component - Interactive Toolbar Actions & Dropdown Navigation',
     expect(exportButton.getAttribute('aria-expanded')).toBe('false');
   });
 
-  it('revokes object URL upon MeshEngine ZIP bundle export', async () => {
+  it('gates MeshEngine ZIP export for Starter tier users', async () => {
+    const exportBundleSpy = vi.spyOn(bundleSerializer, 'createMeshEngineBundle');
+
+    render(
+      <SubscriptionProvider>
+        <Header
+          project={dummyProject}
+          geminiConfigured={false}
+          onOpenGeminiSettings={vi.fn()}
+          onOpenValuation={vi.fn()}
+          onOpenProcurement={vi.fn()}
+          onOpenIngestion={vi.fn()}
+          onOpenPropertyRecord={vi.fn()}
+          onOpenReport={vi.fn()}
+          onSaveManual={vi.fn()}
+        />
+      </SubscriptionProvider>
+    );
+
+    const exportButton = screen.getByText('Export').closest('button')!;
+    fireEvent.click(exportButton);
+
+    const zipItem = screen.getByText('MeshEngine Drop (.ZIP)');
+    fireEvent.click(zipItem);
+
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(exportBundleSpy).not.toHaveBeenCalled();
+  });
+
+  it('revokes object URL upon MeshEngine ZIP bundle export when user has Pro tier', async () => {
     const fakeBlob = new Blob(['fake-zip-data'], { type: 'application/zip' });
     vi.spyOn(bundleSerializer, 'createMeshEngineBundle').mockResolvedValue(fakeBlob);
 
@@ -197,17 +230,19 @@ describe('Header Component - Interactive Toolbar Actions & Dropdown Navigation',
     globalThis.URL.revokeObjectURL = revokeObjectURLSpy;
 
     render(
-      <Header
-        project={dummyProject}
-        geminiConfigured={false}
-        onOpenGeminiSettings={vi.fn()}
-        onOpenValuation={vi.fn()}
-        onOpenProcurement={vi.fn()}
-        onOpenIngestion={vi.fn()}
-        onOpenPropertyRecord={vi.fn()}
-        onOpenReport={vi.fn()}
-        onSaveManual={vi.fn()}
-      />
+      <SubscriptionProvider initialTier="pro">
+        <Header
+          project={dummyProject}
+          geminiConfigured={false}
+          onOpenGeminiSettings={vi.fn()}
+          onOpenValuation={vi.fn()}
+          onOpenProcurement={vi.fn()}
+          onOpenIngestion={vi.fn()}
+          onOpenPropertyRecord={vi.fn()}
+          onOpenReport={vi.fn()}
+          onSaveManual={vi.fn()}
+        />
+      </SubscriptionProvider>
     );
 
     const exportButton = screen.getByText('Export').closest('button')!;

@@ -11,6 +11,7 @@ import {
   syncOrderWithSupplierEndpoint,
 } from '../../services/lowes/lowesClient';
 import { exportLowesPickSheetCSV } from '../../services/lowes/pickSheetExporter';
+import { useSubscription } from '../../context/SubscriptionContext';
 import {
   X,
   ShoppingCart,
@@ -23,6 +24,7 @@ import {
   Settings2,
   ExternalLink,
   Send,
+  Lock,
 } from 'lucide-react';
 
 interface LowesProcurementModalProps {
@@ -38,6 +40,7 @@ export const LowesProcurementModal: React.FC<LowesProcurementModalProps> = ({
   onClose,
   onUpdateSupplyRetailer,
 }) => {
+  const { hasAccess, openUpgradeModal } = useSubscription();
   const [selectedAisle, setSelectedAisle] = useState<string | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -479,11 +482,29 @@ export const LowesProcurementModal: React.FC<LowesProcurementModalProps> = ({
 
           <div className="flex items-center gap-3">
             <button
-              onClick={handleDownloadCSV}
+              onClick={() => {
+                if (!hasAccess('download_procurement_csv')) {
+                  openUpgradeModal('download_procurement_csv');
+                  return;
+                }
+                handleDownloadCSV();
+              }}
               className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 shadow-lg transition"
             >
-              <Download className="w-4 h-4" />
-              Download Pick Sheet (CSV)
+              {hasAccess('download_procurement_csv') ? (
+                <>
+                  <Download className="w-4 h-4" />
+                  <span>Download Pick Sheet (CSV)</span>
+                </>
+              ) : (
+                <>
+                  <Lock className="w-4 h-4 text-blue-200" />
+                  <span>Download Pick Sheet (CSV)</span>
+                  <span className="text-[9px] bg-blue-950 text-blue-200 border border-blue-400/50 px-1.5 py-0.2 rounded font-bold uppercase">
+                    PRO
+                  </span>
+                </>
+              )}
             </button>
           </div>
         </div>
