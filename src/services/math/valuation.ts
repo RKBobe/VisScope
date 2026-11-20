@@ -6,6 +6,8 @@ import {
   RoomNode,
   ProjectSummary,
   DefectItem,
+  ProjectScopeType,
+  TradeCategory,
 } from '../../types/sprocket';
 
 export const PRAIRIE_VILLAGE_COST_INDEX: RegionalCostIndex = {
@@ -406,9 +408,22 @@ export function getAdjustedUnitPrice(
 }
 
 /**
+ * Checks whether a given trade category is active in the current project scope.
+ */
+export function isTradeCategoryIncluded(
+  tradeCategory: string,
+  includedTrades?: TradeCategory[]
+): boolean {
+  if (!includedTrades || includedTrades.length === 0) return true;
+  return includedTrades.some(
+    (t) => t.toLowerCase() === tradeCategory.trim().toLowerCase()
+  );
+}
+
+/**
  * Calculates Room Cost Rollup:
  * 1. Base Replacement Cost = Area * Base $/SF * Quality Multiplier * Regional Combined Index
- * 2. Cost to Cure = Sum of all DefectItems in room (or Condition % of base if no defects)
+ * 2. Cost to Cure = Sum of all included DefectItems in room (or Condition % of base if no defects)
  * 3. Room Total = Base Replacement Cost + Cost to Cure
  */
 export function calculateRoomCostRollup(
@@ -416,7 +431,9 @@ export function calculateRoomCostRollup(
   qualityClass: QualityClass,
   conditionClass: ConditionClass,
   deficiencies: DefectItem[],
-  costIndex: RegionalCostIndex
+  costIndex: RegionalCostIndex,
+  _projectType: ProjectScopeType = 'new_construction',
+  includedTrades?: TradeCategory[]
 ): { base_replacement_cost: number; cost_to_cure: number; room_total: number } {
   const baseRatePerSqft = BASE_REPLACEMENT_COST_PER_SQFT[qualityClass] || 160;
 
@@ -434,7 +451,9 @@ export function calculateRoomCostRollup(
   if (deficiencies && deficiencies.length > 0) {
     for (const defect of deficiencies) {
       if (defect.is_verified !== false && defect.action !== 'Keep') {
-        cost_to_cure += defect.total_cost;
+        if (isTradeCategoryIncluded(defect.trade_category, includedTrades)) {
+          cost_to_cure += defect.total_cost;
+        }
       }
     }
   } else {
@@ -454,38 +473,87 @@ export function calculateRoomCostRollup(
 }
 
 /**
- * Calculates full project cost summary with Craftsman Direct & Indirect breakdown.
+ * Calculates full project cost summary with Craftsman Direct & Indirect breakdown,
+ * distinctly showing both full property valuation and the dedicated remodel cost.
  */
 export function calculateProjectSummary(
   rooms: RoomNode[],
-  _costIndex: RegionalCostIndex
+  _costIndex: RegionalCostIndex,
+  projectType: ProjectScopeType = 'new_construction',
+  includedTrades?: TradeCategory[]
 ): ProjectSummary {
   let totalBaseReplacement = 0;
   let totalCostToCure = 0;
+  let remodelDirectCost = 0;
 
   for (const room of rooms) {
     totalBaseReplacement += room.cost_rollup.base_replacement_cost;
     totalCostToCure += room.cost_rollup.cost_to_cure;
+
+    // Sum active remodel trade scope
+    if (room.deficiencies && room.deficiencies.length > 0) {
+      for (const def of room.deficiencies) {
+        if (def.is_verified !== false && def.action !== 'Keep') {
+          if (isTradeCategoryIncluded(def.trade_category, includedTrades)) {
+            remodelDirectCost += def.total_cost;
+          }
+        }
+      }
+    } else {
+      remodelDirectCost += room.cost_rollup.cost_to_cure;
+    }
   }
 
-  // Direct Cost Subtotal = Base Replacement + Cost to Cure
-  const direct_cost_subtotal = Number((totalBaseReplacement + totalCostToCure).toFixed(2));
-
-  // Indirect Costs (Permits, architectural, insurance, temporary utilities ~ 12%)
-  const indirect_cost_subtotal = Number((direct_cost_subtotal * 0.12).toFixed(2));
-
-  // Contractor Incentive / Profit & Overhead (~ 15%)
-  const contractor_incentive = Number(
-    ((direct_cost_subtotal + indirect_cost_subtotal) * 0.15).toFixed(2)
+  // 1. Full Valuation (Replacement Cost New & As-Is Basis)
+  const full_structural_direct = Number((totalBaseReplacement + totalCostToCure).toFixed(2));
+  const full_indirect = Number((full_structural_direct * 0.12).toFixed(2));
+  const full_contractor_incentive = Number(
+    ((full_structural_direct + full_indirect) * 0.15).toFixed(2)
   );
-
-  const total_project_cost = Number(
-    (direct_cost_subtotal + indirect_cost_subtotal + contractor_incentive).toFixed(2)
+  const full_replacement_cost_new = Number(
+    (full_structural_direct + full_indirect + full_contractor_incentive).toFixed(2)
   );
 
   const total_cost_to_cure = Number(totalCostToCure.toFixed(2));
-  const post_renovation_value = total_project_cost;
+  const post_renovation_value = full_replacement_cost_new;
   const as_is_value = Number(Math.max(0, post_renovation_value - total_cost_to_cure).toFixed(2));
+
+  // 2. Distinct Remodel / Renovation Scope Accounting
+  const remodel_scope_direct = Number(remodelDirectCost.toFixed(2));
+  // Remodel-specific indirect costs (permits, dumpster, site staging ~ 10%)
+  const remodel_scope_indirect = Number((remodel_scope_direct * 0.10).toFixed(2));
+  // Remodel contractor margin & overhead (15%)
+  const remodel_contractor_fee = Number(
+    ((remodel_scope_direct + remodel_scope_indirect) * 0.15).toFixed(2)
+  );
+  const remodel_total_budget = Number(
+    (remodel_scope_direct + remodel_scope_indirect + remodel_contractor_fee).toFixed(2)
+  );
+
+  // 3. For project types where the user is specifically scoping a Remodel, Casualty, or Pre-Purchase:
+  // The primary direct_cost_subtotal and total_project_cost reflect the remodel/renovation investment,
+  // while post_renovation_value and as_is_value maintain the full home valuation!
+  const isRemodelScope =
+    projectType === 'remodel' ||
+    projectType === 'casualty_loss' ||
+    projectType === 'pre_purchase' ||
+    projectType === 'pre_listing';
+
+  const direct_cost_subtotal = isRemodelScope
+    ? remodel_scope_direct
+    : full_structural_direct;
+
+  const indirect_cost_subtotal = isRemodelScope
+    ? remodel_scope_indirect
+    : full_indirect;
+
+  const contractor_incentive = isRemodelScope
+    ? remodel_contractor_fee
+    : full_contractor_incentive;
+
+  const total_project_cost = isRemodelScope
+    ? remodel_total_budget
+    : full_replacement_cost_new;
 
   return {
     direct_cost_subtotal,
@@ -495,5 +563,11 @@ export function calculateProjectSummary(
     total_cost_to_cure,
     as_is_value,
     post_renovation_value,
+    // Distinct Remodel Accounting
+    remodel_scope_direct,
+    remodel_scope_indirect,
+    remodel_contractor_fee,
+    remodel_total_budget,
+    structural_base_cost: Number(totalBaseReplacement.toFixed(2)),
   };
 }

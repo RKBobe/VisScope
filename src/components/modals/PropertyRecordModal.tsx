@@ -6,6 +6,7 @@ import {
   PropertyMetadata,
   QualityClass,
   SprocketProject,
+  ProjectScopeType,
 } from '../../types/sprocket';
 import { lookupCountyParcel } from '../../services/ingestion/countyGisClient';
 import {
@@ -29,7 +30,8 @@ interface PropertyRecordModalProps {
     updatedAddress: SprocketProject['address'],
     updatedMetadata: PropertyMetadata,
     baselineQuality: QualityClass,
-    baselineCondition: ConditionClass
+    baselineCondition: ConditionClass,
+    projectType?: ProjectScopeType
   ) => void;
 }
 
@@ -206,6 +208,51 @@ export const PropertyRecordModal: React.FC<PropertyRecordModalProps> = ({
 
         {/* Scrollable Fields */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 text-xs">
+          {/* Project Scope Type Segmented Bar */}
+          <div className="bg-slate-950/90 border border-slate-800 rounded-xl p-3.5 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-200 block">
+                Inspection Purpose & Project Scope Type
+              </label>
+              <span className="text-[10px] text-slate-500 font-mono">
+                Active: {project.project_type ? project.project_type.replace('_', ' ').toUpperCase() : 'REMODEL'}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {[
+                { id: 'remodel', label: '🔨 Remodel / Rehab', desc: 'Distinct remodel budget' },
+                { id: 'clean_appraisal', label: '📋 Clean Appraisal', desc: 'As-Is property valuation' },
+                { id: 'casualty_loss', label: '🔥 Insurance Casualty', desc: 'Fire / flood scope' },
+                { id: 'new_construction', label: '🏗️ New Construction', desc: 'Ground-up RCN' },
+              ].map((scope) => {
+                const isSelected = (project.project_type || 'remodel') === scope.id;
+                return (
+                  <button
+                    key={scope.id}
+                    type="button"
+                    onClick={() => {
+                      onUpdateProjectMetadata(
+                        project.address,
+                        meta,
+                        project.baseline_quality,
+                        project.baseline_condition,
+                        scope.id as ProjectScopeType
+                      );
+                    }}
+                    className={`p-2.5 rounded-lg border text-left transition ${
+                      isSelected
+                        ? 'bg-sky-950/80 border-sky-500 text-white shadow-md'
+                        : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    }`}
+                  >
+                    <div className="font-bold text-xs">{scope.label}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5">{scope.desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
           {meta.ingestion_notes && (
             <div className="bg-sky-950/40 border border-sky-800/70 rounded-xl p-3 text-sky-200 flex items-center justify-between">
               <span>{meta.ingestion_notes}</span>

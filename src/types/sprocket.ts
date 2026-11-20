@@ -4,6 +4,24 @@ export type ScopeAction = 'Keep' | 'Remove' | 'Replace' | 'Add';
 export type FloorLevel = 'First Floor' | 'Second Floor' | 'Basement' | 'Attic';
 export type RoomNodeType = 'interior_room' | 'exterior_footprint' | 'accessory_structure';
 
+export type ProjectScopeType =
+  | 'clean_appraisal'
+  | 'remodel'
+  | 'casualty_loss'
+  | 'pre_purchase'
+  | 'pre_listing'
+  | 'new_construction';
+
+export type InspectionTemplateId =
+  | 'clean_appraisal'
+  | 'remodel_renovation'
+  | 'fire_damage'
+  | 'flood_damage'
+  | 'pre_purchase'
+  | 'pre_listing'
+  | 'new_construction'
+  | 'custom';
+
 export type TradeCategory =
   | 'Excavation'
   | 'Foundation'
@@ -23,6 +41,51 @@ export type TradeCategory =
   | 'Plumbing'
   | 'Finish Carpentry'
   | 'Exterior Finish';
+
+export const ALL_TRADE_CATEGORIES: TradeCategory[] = [
+  'Excavation',
+  'Foundation',
+  'Framing',
+  'Interior Wall Finish',
+  'Carpet, Flooring',
+  'Cabinets',
+  'Countertops',
+  'Plumbing Fixtures',
+  'Painting',
+  'Doors & Windows',
+  'Roofing',
+  'Electrical',
+  'HVAC',
+  'Drywall',
+  'Flooring',
+  'Plumbing',
+  'Finish Carpentry',
+  'Exterior Finish',
+];
+
+export const STRUCTURAL_TRADE_CATEGORIES: TradeCategory[] = [
+  'Excavation',
+  'Foundation',
+  'Framing',
+  'Exterior Finish',
+  'Roofing',
+];
+
+export const REMODEL_DEFAULT_TRADE_CATEGORIES: TradeCategory[] = [
+  'Interior Wall Finish',
+  'Carpet, Flooring',
+  'Cabinets',
+  'Countertops',
+  'Plumbing Fixtures',
+  'Painting',
+  'Doors & Windows',
+  'Electrical',
+  'HVAC',
+  'Drywall',
+  'Flooring',
+  'Plumbing',
+  'Finish Carpentry',
+];
 
 export interface Point2D {
   x: number; // inches
@@ -207,6 +270,12 @@ export interface ProjectSummary {
   total_cost_to_cure: number;
   as_is_value: number; // Post-Renovation (RCN) minus Cost to Cure
   post_renovation_value: number; // Replacement Cost New (RCN)
+  // Distinct Remodel & Renovation Accounting
+  remodel_scope_direct?: number;     // Direct cost of remodel trade assemblies & deficiencies
+  remodel_scope_indirect?: number;   // Remodel-specific indirect costs (permits, dumpster, clean-up)
+  remodel_contractor_fee?: number;   // Remodel contractor profit & overhead
+  remodel_total_budget?: number;     // Total remodel investment
+  structural_base_cost?: number;     // Existing foundation, framing, and building envelope base
 }
 
 export type SupplyRetailerId =
@@ -242,6 +311,9 @@ export interface SprocketProject {
   cost_index: RegionalCostIndex;
   baseline_quality: QualityClass;
   baseline_condition: ConditionClass;
+  project_type?: ProjectScopeType;
+  template_id?: InspectionTemplateId;
+  included_trade_categories?: TradeCategory[];
   supply_retailer?: RetailerConnectionConfig;
   property_metadata?: PropertyMetadata;
   rooms: RoomNode[];

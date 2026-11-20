@@ -162,4 +162,137 @@ describe('Valuation & Craftsman Cost Engine', () => {
 
     expect(rollup.cost_to_cure).toBe(175);
   });
+
+  it('distinctly breaks out remodel scope budget while maintaining full property valuation', () => {
+    const dummyRoom: RoomNode = {
+      id: 'room-remodel',
+      name: 'Kitchen',
+      level: 'First Floor',
+      dimensions: { length_ft: 18, width_ft: 14, height_ft: 9 },
+      canvas_position: { x: 0, y: 0 },
+      openings: [],
+      floor_area_sqft: 252,
+      gross_wall_area_sqft: 576,
+      net_wall_area_sqft: 576,
+      quality_class: 'Class 4',
+      condition_class: 'Class 3',
+      is_class_overridden: false,
+      voice_transcript: '',
+      deficiencies: [
+        {
+          id: 'def-kitchen-1',
+          trade_category: 'Cabinets',
+          action: 'Replace',
+          description: 'New Shaker Cabinets',
+          quantity: 20,
+          unit: 'LF',
+          unit_price: 320,
+          total_cost: 6400,
+          is_verified: true,
+        },
+        {
+          id: 'def-kitchen-2',
+          trade_category: 'Carpet, Flooring',
+          action: 'Replace',
+          description: 'Porcelain Tile',
+          quantity: 250,
+          unit: 'SF',
+          unit_price: 12,
+          total_cost: 3000,
+          is_verified: true,
+        },
+      ],
+      photos: [],
+      cost_rollup: {
+        base_replacement_cost: 42840,
+        cost_to_cure: 9400,
+        room_total: 52240,
+      },
+    };
+
+    // Calculate with remodel mode and remodel trade inclusions
+    const summary = calculateProjectSummary(
+      [dummyRoom],
+      PRAIRIE_VILLAGE_COST_INDEX,
+      'remodel',
+      ['Cabinets', 'Carpet, Flooring', 'Painting']
+    );
+
+    // Full property valuation is maintained
+    expect(summary.structural_base_cost).toBe(42840);
+    expect(summary.post_renovation_value).toBeGreaterThan(50000);
+    expect(summary.as_is_value).toBeCloseTo(summary.post_renovation_value - summary.total_cost_to_cure, 2);
+
+    // Distinct Remodel Accounting is clearly indicated
+    expect(summary.remodel_scope_direct).toBe(9400); // 6400 + 3000
+    expect(summary.remodel_scope_indirect).toBe(940); // 10%
+    expect(summary.remodel_contractor_fee).toBe(1551); // 15% of (9400 + 940)
+    expect(summary.remodel_total_budget).toBe(11891); // 9400 + 940 + 1551
+
+    // Remodel mode sets direct_cost_subtotal to the remodel scope rather than ground-up new construction
+    expect(summary.direct_cost_subtotal).toBe(9400);
+    expect(summary.total_project_cost).toBe(11891);
+  });
+
+  it('filters out excluded trade categories from remodel scope', () => {
+    const dummyRoom: RoomNode = {
+      id: 'room-filter',
+      name: 'Basement Room',
+      level: 'Basement',
+      dimensions: { length_ft: 20, width_ft: 20, height_ft: 8 },
+      canvas_position: { x: 0, y: 0 },
+      openings: [],
+      floor_area_sqft: 400,
+      gross_wall_area_sqft: 640,
+      net_wall_area_sqft: 640,
+      quality_class: 'Class 4',
+      condition_class: 'Class 4',
+      is_class_overridden: false,
+      voice_transcript: '',
+      deficiencies: [
+        {
+          id: 'def-foundation',
+          trade_category: 'Foundation',
+          action: 'Replace',
+          description: 'Foundation underpin',
+          quantity: 1,
+          unit: 'ALLOWANCE',
+          unit_price: 15000,
+          total_cost: 15000,
+          is_verified: true,
+        },
+        {
+          id: 'def-paint',
+          trade_category: 'Painting',
+          action: 'Replace',
+          description: 'Repaint walls',
+          quantity: 600,
+          unit: 'SF',
+          unit_price: 2.5,
+          total_cost: 1500,
+          is_verified: true,
+        },
+      ],
+      photos: [],
+      cost_rollup: {
+        base_replacement_cost: 0,
+        cost_to_cure: 0,
+        room_total: 0,
+      },
+    };
+
+    // When Foundation is excluded from the scope:
+    const rollup = calculateRoomCostRollup(
+      400,
+      'Class 4',
+      'Class 4',
+      dummyRoom.deficiencies,
+      PRAIRIE_VILLAGE_COST_INDEX,
+      'remodel',
+      ['Painting', 'Drywall'] // Foundation is NOT included
+    );
+
+    // Only Painting ($1500) is included; Foundation ($15000) is excluded
+    expect(rollup.cost_to_cure).toBe(1500);
+  });
 });

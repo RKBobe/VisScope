@@ -393,46 +393,44 @@ export const InspectionReportModal: React.FC<InspectionReportModalProps> = ({
                 </span>
               </div>
 
-              {/* Valuation Metric Cards */}
+              {/* Valuation & Scope Metric Cards */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-4">
-                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
-                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">Direct Cost RCN</span>
-                  <span className="text-base font-extrabold text-slate-900 font-mono">
-                    ${project.summary.direct_cost_subtotal.toLocaleString()}
-                  </span>
-                  <span className="text-[9px] text-slate-500 block">Base trade direct</span>
-                </div>
+                {project.summary.remodel_total_budget !== undefined && project.project_type !== 'new_construction' ? (
+                  <div className="p-3 bg-emerald-50 border-2 border-emerald-400 rounded-xl text-center shadow-sm">
+                    <span className="text-[10px] uppercase font-bold text-emerald-800 block">
+                      Remodel Scope (Budget)
+                    </span>
+                    <span className="text-base font-black text-emerald-700 font-mono">
+                      ${project.summary.remodel_total_budget.toLocaleString()}
+                    </span>
+                    <span className="text-[9px] text-emerald-600 block">Active Renovation Scope</span>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                    <span className="text-[10px] uppercase font-semibold text-slate-500 block">Direct Cost RCN</span>
+                    <span className="text-base font-extrabold text-slate-900 font-mono">
+                      ${project.summary.direct_cost_subtotal.toLocaleString()}
+                    </span>
+                    <span className="text-[9px] text-slate-500 block">Base trade direct</span>
+                  </div>
+                )}
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
-                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">Indirect Costs</span>
-                  <span className="text-base font-extrabold text-slate-900 font-mono">
-                    ${project.summary.indirect_cost_subtotal.toLocaleString()}
+                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">
+                    {project.project_type === 'remodel' ? 'Remodel Direct' : 'Direct Base'}
                   </span>
-                  <span className="text-[9px] text-slate-500 block">Permits & architect</span>
+                  <span className="text-base font-extrabold text-slate-900 font-mono">
+                    ${(project.summary.remodel_scope_direct ?? project.summary.direct_cost_subtotal).toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-slate-500 block">Active trade work</span>
                 </div>
 
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
-                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">GC Incentive</span>
+                  <span className="text-[10px] uppercase font-semibold text-slate-500 block">GC Fee / Margin</span>
                   <span className="text-base font-extrabold text-slate-900 font-mono">
-                    ${project.summary.contractor_incentive.toLocaleString()}
+                    ${(project.summary.remodel_contractor_fee ?? project.summary.contractor_incentive).toLocaleString()}
                   </span>
-                  <span className="text-[9px] text-slate-500 block">Contractor fee</span>
-                </div>
-
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-                  <span className="text-[10px] uppercase font-semibold text-emerald-800 block">Total RCN</span>
-                  <span className="text-base font-extrabold text-emerald-700 font-mono">
-                    ${project.summary.post_renovation_value.toLocaleString()}
-                  </span>
-                  <span className="text-[9px] text-emerald-600 block">Post-Renovation RCN</span>
-                </div>
-
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center">
-                  <span className="text-[10px] uppercase font-semibold text-amber-800 block">Cost to Cure</span>
-                  <span className="text-base font-extrabold text-amber-700 font-mono">
-                    ${project.summary.total_cost_to_cure.toLocaleString()}
-                  </span>
-                  <span className="text-[9px] text-amber-600 block">Verified deficiencies</span>
+                  <span className="text-[9px] text-slate-500 block">Contractor incentive</span>
                 </div>
 
                 <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-center">
@@ -440,7 +438,23 @@ export const InspectionReportModal: React.FC<InspectionReportModalProps> = ({
                   <span className="text-base font-extrabold text-sky-900 font-mono">
                     ${project.summary.as_is_value.toLocaleString()}
                   </span>
-                  <span className="text-[9px] text-sky-700 block">RCN minus Cure</span>
+                  <span className="text-[9px] text-sky-600 block">Pre-remodel baseline</span>
+                </div>
+
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                  <span className="text-[10px] uppercase font-semibold text-emerald-800 block">Post-Reno RCN</span>
+                  <span className="text-base font-extrabold text-emerald-700 font-mono">
+                    ${project.summary.post_renovation_value.toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-emerald-600 block">Completed property RCN</span>
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center">
+                  <span className="text-[10px] uppercase font-semibold text-amber-800 block">Cost to Cure</span>
+                  <span className="text-base font-extrabold text-amber-700 font-mono">
+                    ${project.summary.total_cost_to_cure.toLocaleString()}
+                  </span>
+                  <span className="text-[9px] text-amber-600 block">Itemized deficiencies</span>
                 </div>
               </div>
 

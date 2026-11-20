@@ -208,6 +208,25 @@ export const Header: React.FC<HeaderProps> = ({
                   </span>
                 )}
               </button>
+
+              {/* Project Template & Scope Badge */}
+              <span
+                className={`text-[10px] px-2 py-0.5 rounded-lg border font-bold uppercase tracking-wider ${
+                  project.project_type === 'clean_appraisal'
+                    ? 'bg-sky-950/60 text-sky-300 border-sky-600/50'
+                    : project.project_type === 'casualty_loss'
+                    ? 'bg-rose-950/60 text-rose-300 border-rose-600/50'
+                    : project.project_type === 'new_construction'
+                    ? 'bg-indigo-950/60 text-indigo-300 border-indigo-600/50'
+                    : 'bg-emerald-950/60 text-emerald-300 border-emerald-600/50'
+                }`}
+                title={`Active Inspection Scope: ${
+                  project.project_type ? project.project_type.replace('_', ' ') : 'Remodel Scope'
+                }`}
+              >
+                {project.project_type ? project.project_type.replace('_', ' ') : 'Remodel'}
+              </span>
+
               <button
                 type="button"
                 aria-haspopup="menu"
@@ -330,31 +349,36 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="text-slate-300 font-bold">{project.rooms.length} Units</span>
           </div>
 
-          <div className="bg-slate-950 px-3 py-1 rounded-lg border border-slate-800">
-            <span className="text-[10px] text-slate-500 uppercase block">Direct Cost</span>
-            <span className="text-emerald-400 font-bold">
-              ${project.summary.direct_cost_subtotal.toLocaleString()}
-            </span>
-          </div>
-
-          <div className="bg-slate-950 px-3 py-1 rounded-lg border border-amber-900/40">
-            <span className="text-[10px] text-amber-400 uppercase block">Cost to Cure</span>
-            <span className="text-amber-400 font-bold">
-              ${project.summary.total_cost_to_cure.toLocaleString()}
-            </span>
-          </div>
-
-          <div className="bg-slate-950 px-3 py-1 rounded-lg border border-emerald-900/40">
-            <span className="text-[10px] text-emerald-400 uppercase block">Post-Reno (RCN)</span>
-            <span className="text-emerald-300 font-bold">
-              ${project.summary.post_renovation_value.toLocaleString()}
-            </span>
-          </div>
+          {/* Remodel Budget vs Direct Cost */}
+          {project.summary.remodel_total_budget !== undefined && project.project_type !== 'new_construction' ? (
+            <div className="bg-slate-950 px-3 py-1 rounded-lg border border-emerald-500/60 shadow-sm">
+              <span className="text-[10px] text-emerald-400 uppercase font-bold block flex items-center gap-1">
+                Remodel Scope
+              </span>
+              <span className="text-emerald-300 font-extrabold">
+                ${project.summary.remodel_total_budget.toLocaleString()}
+              </span>
+            </div>
+          ) : (
+            <div className="bg-slate-950 px-3 py-1 rounded-lg border border-slate-800">
+              <span className="text-[10px] text-slate-500 uppercase block">Direct Cost</span>
+              <span className="text-emerald-400 font-bold">
+                ${project.summary.direct_cost_subtotal.toLocaleString()}
+              </span>
+            </div>
+          )}
 
           <div className="bg-slate-950 px-3 py-1 rounded-lg border border-slate-700">
             <span className="text-[10px] text-slate-400 uppercase block">As-Is Value</span>
             <span className="text-slate-100 font-bold">
               ${project.summary.as_is_value.toLocaleString()}
+            </span>
+          </div>
+
+          <div className="bg-slate-950 px-3 py-1 rounded-lg border border-sky-900/40">
+            <span className="text-[10px] text-sky-400 uppercase block">Post-Reno (RCN)</span>
+            <span className="text-sky-300 font-bold">
+              ${project.summary.post_renovation_value.toLocaleString()}
             </span>
           </div>
         </div>

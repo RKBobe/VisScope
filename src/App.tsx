@@ -10,13 +10,16 @@ import {
   QualityClass,
   ConditionClass,
   RetailerConnectionConfig,
+  ProjectScopeType,
+  TradeCategory,
+  InspectionTemplateId,
 } from './types/sprocket';
 import {
   loadSavedProject,
   saveProject,
   createInitialProject,
   listSavedProjects,
-  createBlankProject,
+  createProjectFromTemplate,
   deleteProjectFromStore,
 } from './services/storage/projectStore';
 import {
@@ -53,6 +56,7 @@ import { PropertyRecordModal } from './components/modals/PropertyRecordModal';
 import { GeminiSettingsModal } from './components/modals/GeminiSettingsModal';
 import { InspectionReportModal } from './components/modals/InspectionReportModal';
 import { SubscriptionUpgradeModal } from './components/modals/SubscriptionUpgradeModal';
+import { NewProjectModal } from './components/modals/NewProjectModal';
 import { SubscriptionProvider } from './context/SubscriptionContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 
@@ -67,6 +71,7 @@ const AppContent: React.FC = () => {
   const [showAnsiBuffer, setShowAnsiBuffer] = useState<boolean>(true);
 
   // Modals state
+  const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [isValuationOpen, setIsValuationOpen] = useState(false);
   const [isProcurementOpen, setIsProcurementOpen] = useState(false);
   const [isIngestionOpen, setIsIngestionOpen] = useState(false);
@@ -121,12 +126,20 @@ const AppContent: React.FC = () => {
 
   // Helper to re-derive all room-level and project-level rollups
   const recomputeProject = useCallback(
-    (rooms: RoomNode[], costIndex: RegionalCostIndex = project.cost_index): SprocketProject => {
+    (
+      rooms: RoomNode[],
+      costIndex: RegionalCostIndex = project.cost_index,
+      projectTypeOverride?: ProjectScopeType,
+      includedTradesOverride?: TradeCategory[]
+    ): SprocketProject => {
       const indexChanged =
         costIndex.zip_code !== project.cost_index.zip_code ||
         costIndex.material_modifier !== project.cost_index.material_modifier ||
         costIndex.labor_modifier !== project.cost_index.labor_modifier ||
         costIndex.equipment_modifier !== project.cost_index.equipment_modifier;
+
+      const projectType = projectTypeOverride || project.project_type || 'remodel';
+      const includedTrades = includedTradesOverride || project.included_trade_categories;
 
       const updatedRooms = rooms.map((room) => {
         const prevRoom = project.rooms.find((pr) => pr.id === room.id);
@@ -159,7 +172,9 @@ const AppContent: React.FC = () => {
           room.quality_class,
           room.condition_class,
           updatedDeficiencies,
-          costIndex
+          costIndex,
+          projectType,
+          includedTrades
         );
 
         return {
@@ -174,11 +189,13 @@ const AppContent: React.FC = () => {
 
       const ansi = calculateAnsiZ765GLA(updatedRooms, 6);
       const gba = calculateGBA(updatedRooms);
-      const summary = calculateProjectSummary(updatedRooms, costIndex);
+      const summary = calculateProjectSummary(updatedRooms, costIndex, projectType, includedTrades);
 
       return {
         ...project,
         cost_index: costIndex,
+        project_type: projectType,
+        included_trade_categories: includedTrades,
         rooms: updatedRooms,
         gla_sqft: ansi.ansi_gla_sqft,
         gba_sqft: gba,
@@ -306,12 +323,37 @@ const AppContent: React.FC = () => {
     setCurrentLevel('First Floor');
   };
 
-  // Create new blank project in multi-project IndexedDB store
+  // Open template modal when creating new inspection project
   const handleCreateNewProject = () => {
-    const next = createBlankProject(`Inspection #${savedProjects.length + 1}`);
+    setIsNewProjectModalOpen(true);
+  };
+
+  // Create project from template modal
+  const handleCreateProjectFromModal = (options: {
+    templateId: InspectionTemplateId;
+    name: string;
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    includedTrades: TradeCategory[];
+    baselineQuality: QualityClass;
+    baselineCondition: ConditionClass;
+  }) => {
+    const next = createProjectFromTemplate(options);
     setProject(next);
+    setSavedProjects((prev) => [next, ...prev]);
     setActiveRoomId(null);
     setCurrentLevel('First Floor');
+  };
+
+  // Toggle or customize active trade categories on project
+  const handleUpdateIncludedTrades = (nextTrades: TradeCategory[]) => {
+    const recomputed = recomputeProject(project.rooms, undefined, undefined, nextTrades);
+    setProject({
+      ...recomputed,
+      included_trade_categories: nextTrades,
+    });
   };
 
   // Delete project from IndexedDB store
@@ -342,12 +384,13 @@ const AppContent: React.FC = () => {
     setActiveRoomId(null);
   };
 
-  // Update project address, property metadata, and baseline quality/condition from PropertyRecordModal
+  // Update project address, property metadata, baseline quality/condition, and project type from PropertyRecordModal
   const handleUpdateProjectMetadata = (
     updatedAddress: SprocketProject['address'],
     updatedMetadata: PropertyMetadata,
     baselineQuality: QualityClass,
-    baselineCondition: ConditionClass
+    baselineCondition: ConditionClass,
+    projectType?: ProjectScopeType
   ) => {
     const nextCostIndex = resolveRegionalCostIndex(
       updatedAddress.zip,
@@ -363,13 +406,15 @@ const AppContent: React.FC = () => {
             condition_class: baselineCondition,
           }
     );
-    const recomputed = recomputeProject(updatedRooms, nextCostIndex);
+    const effectiveType = projectType || project.project_type || 'remodel';
+    const recomputed = recomputeProject(updatedRooms, nextCostIndex, effectiveType);
     setProject({
       ...recomputed,
       address: updatedAddress,
       property_metadata: updatedMetadata,
       baseline_quality: baselineQuality,
       baseline_condition: baselineCondition,
+      project_type: effectiveType,
     });
   };
 
@@ -444,6 +489,15 @@ const AppContent: React.FC = () => {
         isOpen={isValuationOpen}
         onClose={() => setIsValuationOpen(false)}
         onSelectCostIndex={handleSelectCostIndex}
+        onUpdateIncludedTrades={handleUpdateIncludedTrades}
+      />
+
+      {/* New Project & Appraisal Template Selector Modal */}
+      <NewProjectModal
+        isOpen={isNewProjectModalOpen}
+        onClose={() => setIsNewProjectModalOpen(false)}
+        onCreateProject={handleCreateProjectFromModal}
+        defaultProjectNumber={savedProjects.length + 1}
       />
 
       {/* Materials Supply Pro Procurement Modal */}

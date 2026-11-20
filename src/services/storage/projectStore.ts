@@ -1,11 +1,25 @@
 import { get, set } from 'idb-keyval';
-import { SprocketProject, RoomNode } from '../../types/sprocket';
+import {
+  SprocketProject,
+  RoomNode,
+  InspectionTemplateId,
+  ProjectScopeType,
+  TradeCategory,
+  QualityClass,
+  ConditionClass,
+  REMODEL_DEFAULT_TRADE_CATEGORIES,
+} from '../../types/sprocket';
 import {
   PRAIRIE_VILLAGE_COST_INDEX,
   calculateProjectSummary,
   calculateRoomCostRollup,
+  resolveRegionalCostIndex,
 } from '../math/valuation';
 import { calculateAnsiZ765GLA, calculateGBA } from '../math/geometry';
+import {
+  getInspectionTemplate,
+  getDefaultTradeCategoriesForTemplate,
+} from '../templates/inspectionTemplates';
 
 const STORAGE_KEY = 'datamesh_sprocket_active_project';
 const STORAGE_LIST_KEY = 'datamesh_sprocket_projects_v1';
@@ -146,9 +160,13 @@ export const INITIAL_ROOMS: RoomNode[] = [
 export function createInitialProject(): SprocketProject {
   const rooms = [...INITIAL_ROOMS];
   const costIndex = PRAIRIE_VILLAGE_COST_INDEX;
+  const projectType: ProjectScopeType = 'remodel';
+  const templateId: InspectionTemplateId = 'remodel_renovation';
+  const includedTrades = REMODEL_DEFAULT_TRADE_CATEGORIES;
+
   const ansi = calculateAnsiZ765GLA(rooms, 6);
   const gba = calculateGBA(rooms);
-  const summary = calculateProjectSummary(rooms, costIndex);
+  const summary = calculateProjectSummary(rooms, costIndex, projectType, includedTrades);
 
   return {
     project_id: 'PRJ-66208-001',
@@ -164,6 +182,9 @@ export function createInitialProject(): SprocketProject {
     cost_index: costIndex,
     baseline_quality: 'Class 4',
     baseline_condition: 'Class 3',
+    project_type: projectType,
+    template_id: templateId,
+    included_trade_categories: includedTrades,
     rooms,
     summary,
     created_at: new Date().toISOString(),
@@ -171,52 +192,113 @@ export function createInitialProject(): SprocketProject {
   };
 }
 
-export function createBlankProject(name?: string): SprocketProject {
-  const costIndex = PRAIRIE_VILLAGE_COST_INDEX;
+export function createProjectFromTemplate(options: {
+  templateId?: InspectionTemplateId;
+  name?: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  includedTrades?: TradeCategory[];
+  baselineQuality?: QualityClass;
+  baselineCondition?: ConditionClass;
+}): SprocketProject {
+  const templateId = options.templateId || 'clean_appraisal';
+  const tpl = getInspectionTemplate(templateId);
   const now = new Date().toISOString();
-  const starterRoom: RoomNode = {
-    id: `room-${Date.now()}`,
-    name: 'Main Living Area',
-    level: 'First Floor',
-    dimensions: { length_ft: 20, width_ft: 16, height_ft: 9 },
-    canvas_position: { x: 120, y: 120 },
-    openings: [],
-    floor_area_sqft: 320,
-    gross_wall_area_sqft: 648,
-    net_wall_area_sqft: 648,
-    quality_class: 'Class 4',
-    condition_class: 'Class 3',
-    is_class_overridden: false,
-    voice_transcript: '',
-    deficiencies: [],
-    photos: [],
-    cost_rollup: calculateRoomCostRollup(320, 'Class 4', 'Class 3', [], costIndex),
-  };
 
-  const rooms = [starterRoom];
+  const zip = options.zip?.trim() || '66212';
+  const city = options.city?.trim() || 'Overland Park';
+  const state = options.state?.trim() || 'KS';
+  const costIndex = resolveRegionalCostIndex(zip, city, state);
+
+  const baselineQuality = options.baselineQuality || tpl.default_quality;
+  const baselineCondition = options.baselineCondition || tpl.default_condition;
+  const includedTrades = options.includedTrades || getDefaultTradeCategoriesForTemplate(templateId);
+
+  // Generate starter rooms from template
+  let startX = 120;
+  let startY = 120;
+  const rooms: RoomNode[] = tpl.starter_rooms.map((sr, idx) => {
+    const area = sr.length_ft * sr.width_ft;
+    const grossWall = 2 * (sr.length_ft + sr.width_ft) * sr.height_ft;
+    const roomPos = { x: startX, y: startY };
+    startX += sr.length_ft * 12 + 24;
+    if (startX > 900) {
+      startX = 120;
+      startY += sr.width_ft * 12 + 24;
+    }
+
+    return {
+      id: `room-${Date.now()}-${idx}`,
+      name: sr.name,
+      level: sr.level,
+      dimensions: {
+        length_ft: sr.length_ft,
+        width_ft: sr.width_ft,
+        height_ft: sr.height_ft,
+      },
+      canvas_position: roomPos,
+      openings: [],
+      floor_area_sqft: area,
+      gross_wall_area_sqft: grossWall,
+      net_wall_area_sqft: grossWall,
+      quality_class: baselineQuality,
+      condition_class: baselineCondition,
+      is_class_overridden: false,
+      voice_transcript: '',
+      deficiencies: [],
+      photos: [],
+      cost_rollup: calculateRoomCostRollup(
+        area,
+        baselineQuality,
+        baselineCondition,
+        [],
+        costIndex,
+        tpl.project_type,
+        includedTrades
+      ),
+    };
+  });
+
   const ansi = calculateAnsiZ765GLA(rooms, 6);
   const gba = calculateGBA(rooms);
-  const summary = calculateProjectSummary(rooms, costIndex);
+  const summary = calculateProjectSummary(rooms, costIndex, tpl.project_type, includedTrades);
 
   return {
     project_id: `PRJ-${Date.now().toString().slice(-6)}`,
-    name: name?.trim() || 'New Field Inspection',
+    name: options.name?.trim() || `${tpl.name.split(' (')[0]} #${Date.now().toString().slice(-4)}`,
     address: {
-      street: '100 Main St',
-      city: 'Overland Park',
-      state: 'KS',
-      zip: '66212',
+      street: options.street?.trim() || '100 Main St',
+      city,
+      state,
+      zip,
     },
     gla_sqft: ansi.ansi_gla_sqft,
     gba_sqft: gba,
     cost_index: costIndex,
-    baseline_quality: 'Class 4',
-    baseline_condition: 'Class 3',
+    baseline_quality: baselineQuality,
+    baseline_condition: baselineCondition,
+    project_type: tpl.project_type,
+    template_id: templateId,
+    included_trade_categories: includedTrades,
     rooms,
     summary,
     created_at: now,
     updated_at: now,
   };
+}
+
+export function createBlankProject(
+  name?: string,
+  templateId?: InspectionTemplateId,
+  includedTrades?: TradeCategory[]
+): SprocketProject {
+  return createProjectFromTemplate({
+    name,
+    templateId: templateId || 'clean_appraisal',
+    includedTrades,
+  });
 }
 
 function getSupplierSessionKeyStorageKey(projectId: string): string {

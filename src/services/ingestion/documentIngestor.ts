@@ -697,7 +697,9 @@ export function applyIngestionToProject(
       room.quality_class,
       room.condition_class,
       room.deficiencies,
-      costIndex
+      costIndex,
+      currentProject.project_type,
+      currentProject.included_trade_categories
     );
 
     return {
@@ -711,7 +713,12 @@ export function applyIngestionToProject(
 
   const ansi = calculateAnsiZ765GLA(recomputedRooms, 6);
   const gba = calculateGBA(recomputedRooms);
-  const summary = calculateProjectSummary(recomputedRooms, costIndex);
+  const summary = calculateProjectSummary(
+    recomputedRooms,
+    costIndex,
+    currentProject.project_type,
+    currentProject.included_trade_categories
+  );
 
   return {
     ...currentProject,
