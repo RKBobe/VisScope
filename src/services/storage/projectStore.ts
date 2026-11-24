@@ -366,7 +366,7 @@ export async function saveProject(project: SprocketProject): Promise<void> {
       supply_retailer: project.supply_retailer
         ? { ...project.supply_retailer, api_key: undefined }
         : undefined,
-      updated_at: new Date().toISOString(),
+      updated_at: project.updated_at || new Date().toISOString(),
     };
     await set(STORAGE_KEY, updatedProject);
 

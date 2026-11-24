@@ -1,0 +1,103 @@
+// @vitest-environment happy-dom
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
+import App from '../App';
+import { createInitialProject } from '../services/storage/projectStore';
+import * as geminiClient from '../services/ai/geminiClient';
+
+// Mock idb-keyval in memory for end-to-end tests
+const memoryStore: Record<string, any> = {};
+vi.mock('idb-keyval', () => ({
+  get: vi.fn((key: string) => Promise.resolve(memoryStore[key])),
+  set: vi.fn((key: string, val: any) => {
+    memoryStore[key] = val;
+    return Promise.resolve();
+  }),
+}));
+
+describe('App End-to-End Orchestrator', () => {
+  beforeEach(() => {
+    vi.spyOn(geminiClient, 'checkServerGeminiEnvStatus').mockResolvedValue({
+      configured: false,
+      proxyAvailable: false,
+      model: 'gemini-2.5-flash',
+    });
+
+    for (const k in memoryStore) {
+      delete memoryStore[k];
+    }
+    const initial = createInitialProject();
+    memoryStore['datamesh_sprocket_active_project'] = initial;
+    memoryStore['datamesh_sprocket_projects_v1'] = { [initial.project_id]: initial };
+
+    try {
+      window.sessionStorage?.clear?.();
+      window.localStorage?.clear?.();
+    } catch {
+      // Ignore
+    }
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+  });
+
+  it('renders application workspace with header, canvas, and room palette', async () => {
+    render(<App />);
+
+    // Header branding
+    expect(screen.getByText(/Vis-/i)).toBeDefined();
+    expect(screen.getByText('Scope')).toBeDefined();
+
+    // Canvas rooms and palette entries
+    expect(screen.getAllByText('Living Room').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Kitchen/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/Primary Bedroom/i).length).toBeGreaterThanOrEqual(1);
+
+    // Room Palette
+    expect(screen.getByText('Rooms Menu')).toBeDefined();
+  });
+
+  it('adds a room from palette, selects it, and displays in inspection drawer', async () => {
+    render(<App />);
+
+    // Click Kitchen template in Room Palette
+    const addKitchenBtn = screen.getByTitle("Kitchen (18' × 14')");
+    fireEvent.click(addKitchenBtn);
+
+    // After clicking Kitchen, inspection drawer opens for the newly added room
+    await waitFor(() => {
+      expect(screen.getByText('Dimensions & Wall Areas')).toBeDefined();
+    });
+  });
+
+  it('opens and closes Valuation modal from header Tools menu', async () => {
+    render(<App />);
+
+    // Header Tools button
+    const toolsBtn = screen.getByText('Tools');
+    fireEvent.click(toolsBtn);
+
+    const valuationMenuItem = screen.getByText(/Craftsman Valuation/i);
+    fireEvent.click(valuationMenuItem);
+
+    expect(screen.getByText(/Deterministic Craftsman Valuation/i)).toBeDefined();
+  });
+
+  it('opens New Project modal when clicking New Inspection Project in project switcher', async () => {
+    render(<App />);
+
+    // Click project dropdown / selector in header
+    const projectSwitcherBtn = screen.getByTitle('Switch or Create Saved Inspection Projects');
+    fireEvent.click(projectSwitcherBtn);
+
+    // Click "New Inspection Project" in dropdown
+    const newProjectBtn = screen.getByText(/New Inspection Project/i);
+    fireEvent.click(newProjectBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/1\. Select Project Inspection Template/i)).toBeDefined();
+    });
+  });
+});
