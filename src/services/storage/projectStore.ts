@@ -1,4 +1,4 @@
-import { get, set } from 'idb-keyval';
+import { get, set, createStore, UseStore } from 'idb-keyval';
 import {
   SprocketProject,
   RoomNode,
@@ -20,9 +20,44 @@ import {
   getInspectionTemplate,
   getDefaultTradeCategoriesForTemplate,
 } from '../templates/inspectionTemplates';
+import { safeLocalStorage } from './localStorage';
 
-const STORAGE_KEY = 'datamesh_sprocket_active_project';
-const STORAGE_LIST_KEY = 'datamesh_sprocket_projects_v1';
+export const VIS_SCOPE_DB_NAME = 'vis_scope_db';
+export const VIS_SCOPE_STORE_NAME = 'projects';
+export const STORAGE_KEY = 'datamesh_sprocket_active_project';
+export const STORAGE_LIST_KEY = 'datamesh_sprocket_projects_v1';
+export const DEVICE_INIT_STORAGE_KEY = 'vis_scope_device_initialized_v1';
+
+let cachedStore: UseStore | null = null;
+
+export function getVisScopeStore(): UseStore {
+  if (!cachedStore) {
+    cachedStore = createStore(VIS_SCOPE_DB_NAME, VIS_SCOPE_STORE_NAME);
+  }
+  return cachedStore;
+}
+
+export function resetVisScopeStore(): void {
+  cachedStore = null;
+}
+
+export function isIndexedDBSupported(): boolean {
+  if (typeof window === 'undefined') return false;
+  return Boolean(
+    window.indexedDB ||
+      (window as any).mozIndexedDB ||
+      (window as any).webkitIndexedDB ||
+      (window as any).msIndexedDB
+  );
+}
+
+export interface StorageInitStatus {
+  supported: boolean;
+  persisted: boolean;
+  migrated: boolean;
+  isFirstDeviceInit: boolean;
+  projectCount: number;
+}
 
 export const INITIAL_ROOMS: RoomNode[] = [
   {
@@ -343,9 +378,121 @@ function hydrateSupplierSessionKey(project: SprocketProject): SprocketProject {
   return project;
 }
 
+export async function ensureIndexedDBInitialized(): Promise<StorageInitStatus> {
+  const supported = isIndexedDBSupported();
+  if (!supported) {
+    return {
+      supported: false,
+      persisted: false,
+      migrated: false,
+      isFirstDeviceInit: false,
+      projectCount: 0,
+    };
+  }
+
+  let persisted = false;
+  try {
+    if (typeof navigator !== 'undefined' && navigator.storage?.persist) {
+      persisted = await navigator.storage.persist();
+    }
+  } catch {
+    // Ignore storage quota error or iframe policy
+  }
+
+  let isFirstDeviceInit = false;
+  try {
+    const alreadyInitialized = safeLocalStorage.getItem<string>(DEVICE_INIT_STORAGE_KEY);
+    if (!alreadyInitialized) {
+      isFirstDeviceInit = true;
+    }
+  } catch {
+    // Ignore localStorage access restrictions
+  }
+
+  const store = getVisScopeStore();
+  let migrated = false;
+
+  try {
+    // Check if dedicated vis_scope_db has any project list
+    const existingMap = await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY, store);
+    const hasProjects = existingMap && Object.keys(existingMap).length > 0;
+
+    if (!hasProjects) {
+      // Check legacy default idb store for migration
+      try {
+        const legacyActive = await get<SprocketProject>(STORAGE_KEY);
+        const legacyMap = await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY);
+
+        if (legacyActive || (legacyMap && Object.keys(legacyMap).length > 0)) {
+          const targetMap: Record<string, SprocketProject> =
+            legacyMap && Object.keys(legacyMap).length > 0
+              ? legacyMap
+              : { [legacyActive!.project_id]: legacyActive! };
+
+          await set(STORAGE_LIST_KEY, targetMap, store);
+          if (legacyActive) {
+            await set(STORAGE_KEY, legacyActive, store);
+          }
+          migrated = true;
+        }
+      } catch {
+        // Legacy migration non-critical failure
+      }
+
+      // If still empty after migration check, seed with initial project on first use
+      const afterCheckActive = await get<SprocketProject>(STORAGE_KEY, store);
+      if (!afterCheckActive) {
+        const initial = createInitialProject();
+        await saveProject(initial);
+      }
+    }
+
+    // Mark device initialization in localStorage
+    try {
+      safeLocalStorage.setItem(DEVICE_INIT_STORAGE_KEY, new Date().toISOString());
+    } catch {}
+
+    const finalList = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY, store)) || {};
+    return {
+      supported: true,
+      persisted,
+      migrated,
+      isFirstDeviceInit,
+      projectCount: Object.keys(finalList).length,
+    };
+  } catch (err) {
+    console.warn('Failed to ensure IndexedDB initialized:', err);
+    return {
+      supported: true,
+      persisted,
+      migrated: false,
+      isFirstDeviceInit,
+      projectCount: 0,
+    };
+  }
+}
+
+export async function createAndPersistProject(options: {
+  templateId?: InspectionTemplateId;
+  name?: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  includedTrades?: TradeCategory[];
+  baselineQuality?: QualityClass;
+  baselineCondition?: ConditionClass;
+}): Promise<{ project: SprocketProject; savedProjects: SprocketProject[] }> {
+  const newProject = createProjectFromTemplate(options);
+  await saveProject(newProject);
+  const savedProjects = await listSavedProjects();
+  return { project: newProject, savedProjects };
+}
+
 export async function loadSavedProject(): Promise<SprocketProject> {
   try {
-    const saved = await get<SprocketProject>(STORAGE_KEY);
+    const store = getVisScopeStore();
+    const saved = await get<SprocketProject>(STORAGE_KEY, store);
     if (saved && saved.rooms && saved.rooms.length > 0) {
       return hydrateSupplierSessionKey(saved);
     }
@@ -368,11 +515,12 @@ export async function saveProject(project: SprocketProject): Promise<void> {
         : undefined,
       updated_at: project.updated_at || new Date().toISOString(),
     };
-    await set(STORAGE_KEY, updatedProject);
+    const store = getVisScopeStore();
+    await set(STORAGE_KEY, updatedProject, store);
 
-    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
+    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY, store)) || {};
     existingMap[updatedProject.project_id] = updatedProject;
-    await set(STORAGE_LIST_KEY, existingMap);
+    await set(STORAGE_LIST_KEY, existingMap, store);
   } catch (err) {
     console.warn('Could not save project to IndexedDB:', err);
   }
@@ -380,7 +528,8 @@ export async function saveProject(project: SprocketProject): Promise<void> {
 
 export async function listSavedProjects(): Promise<SprocketProject[]> {
   try {
-    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
+    const store = getVisScopeStore();
+    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY, store)) || {};
     const entries = Object.values(existingMap).map(hydrateSupplierSessionKey);
     if (entries.length > 0) {
       return entries.sort(
@@ -392,7 +541,7 @@ export async function listSavedProjects(): Promise<SprocketProject[]> {
       ? { ...active, supply_retailer: { ...active.supply_retailer, api_key: undefined } }
       : active;
     existingMap[active.project_id] = scrubbedActive;
-    await set(STORAGE_LIST_KEY, existingMap);
+    await set(STORAGE_LIST_KEY, existingMap, store);
     return [active];
   } catch (err) {
     console.warn('Could not list projects from IndexedDB:', err);
@@ -405,7 +554,8 @@ export async function deleteProjectFromStore(
 ): Promise<SprocketProject[]> {
   try {
     writeSupplierSessionKey(projectId, undefined);
-    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY)) || {};
+    const store = getVisScopeStore();
+    const existingMap = (await get<Record<string, SprocketProject>>(STORAGE_LIST_KEY, store)) || {};
     delete existingMap[projectId];
     let remaining = Object.values(existingMap)
       .map(hydrateSupplierSessionKey)
@@ -414,8 +564,9 @@ export async function deleteProjectFromStore(
       const fresh = createInitialProject();
       existingMap[fresh.project_id] = fresh;
       remaining = [fresh];
+      await set(STORAGE_KEY, fresh, store);
     }
-    await set(STORAGE_LIST_KEY, existingMap);
+    await set(STORAGE_LIST_KEY, existingMap, store);
     return remaining;
   } catch (err) {
     console.warn('Could not delete project from IndexedDB:', err);

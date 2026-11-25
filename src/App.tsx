@@ -19,8 +19,9 @@ import {
   saveProject,
   createInitialProject,
   listSavedProjects,
-  createProjectFromTemplate,
   deleteProjectFromStore,
+  ensureIndexedDBInitialized,
+  createAndPersistProject,
 } from './services/storage/projectStore';
 import {
   calculateRoomFloorArea,
@@ -79,11 +80,13 @@ const AppContent: React.FC = () => {
   const [isGeminiSettingsOpen, setIsGeminiSettingsOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
 
-  // Initial load from IndexedDB & server .env proxy check
+  // Initial load from IndexedDB (with device initialization & migration check) & server .env proxy check
   useEffect(() => {
-    loadSavedProject().then((loaded) => {
+    ensureIndexedDBInitialized().then(async () => {
+      const loaded = await loadSavedProject();
       setProject(loaded);
-      listSavedProjects().then(setSavedProjects);
+      const list = await listSavedProjects();
+      setSavedProjects(list);
     });
     loadGeminiConfig().then(async (loadedConfig) => {
       await checkServerGeminiEnvStatus(loadedConfig.proxyUrl || '/api/gemini');
@@ -328,8 +331,8 @@ const AppContent: React.FC = () => {
     setIsNewProjectModalOpen(true);
   };
 
-  // Create project from template modal
-  const handleCreateProjectFromModal = (options: {
+  // Create project from template modal with immediate atomic persistence to IndexedDB
+  const handleCreateProjectFromModal = async (options: {
     templateId: InspectionTemplateId;
     name: string;
     street: string;
@@ -340,9 +343,9 @@ const AppContent: React.FC = () => {
     baselineQuality: QualityClass;
     baselineCondition: ConditionClass;
   }) => {
-    const next = createProjectFromTemplate(options);
+    const { project: next, savedProjects: updatedList } = await createAndPersistProject(options);
     setProject(next);
-    setSavedProjects((prev) => [next, ...prev]);
+    setSavedProjects(updatedList);
     setActiveRoomId(null);
     setCurrentLevel('First Floor');
   };

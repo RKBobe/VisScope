@@ -10,11 +10,11 @@ describe('GeminiSettingsModal Component', () => {
     vi.spyOn(geminiClient, 'checkServerGeminiEnvStatus').mockResolvedValue({
       configured: false,
       proxyAvailable: false,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.0-flash',
     });
     vi.spyOn(geminiClient, 'clearStoredGeminiKey').mockResolvedValue({
       apiKey: '',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.0-flash',
       enabled: false,
     });
   });
@@ -26,7 +26,7 @@ describe('GeminiSettingsModal Component', () => {
 
   const sampleConfig: GeminiConnectionConfig = {
     apiKey: 'test-api-key',
-    model: 'gemini-2.5-pro',
+    model: 'gemini-3.0-pro',
     enabled: true,
     proxyUrl: '/api/gemini',
   };

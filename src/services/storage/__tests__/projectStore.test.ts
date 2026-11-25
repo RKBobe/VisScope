@@ -8,27 +8,67 @@ import {
   loadSavedProject,
   listSavedProjects,
   deleteProjectFromStore,
+  ensureIndexedDBInitialized,
+  createAndPersistProject,
+  isIndexedDBSupported,
+  resetVisScopeStore,
+  VIS_SCOPE_DB_NAME,
+  VIS_SCOPE_STORE_NAME,
+  STORAGE_KEY,
+  STORAGE_LIST_KEY,
+  DEVICE_INIT_STORAGE_KEY,
   INITIAL_ROOMS,
 } from '../projectStore';
 import { SprocketProject } from '../../../types/sprocket';
 
-// Mock idb-keyval in memory
-const memoryStore: Record<string, any> = {};
+// Mock idb-keyval in memory with support for default and custom stores
+const memoryStores: Record<string, Record<string, any>> = {};
+
+function getStoreKey(customStore?: any): string {
+  if (customStore && customStore.__storeKey) {
+    return customStore.__storeKey;
+  }
+  return 'default';
+}
 
 vi.mock('idb-keyval', () => ({
-  get: vi.fn((key: string) => Promise.resolve(memoryStore[key])),
-  set: vi.fn((key: string, val: any) => {
-    memoryStore[key] = val;
+  createStore: vi.fn((dbName: string, storeName: string) => {
+    return { __storeKey: `${dbName}:${storeName}` };
+  }),
+  get: vi.fn((key: string, customStore?: any) => {
+    const sKey = getStoreKey(customStore);
+    return Promise.resolve(memoryStores[sKey]?.[key]);
+  }),
+  set: vi.fn((key: string, val: any, customStore?: any) => {
+    const sKey = getStoreKey(customStore);
+    if (!memoryStores[sKey]) memoryStores[sKey] = {};
+    memoryStores[sKey][key] = val;
     return Promise.resolve();
   }),
 }));
 
 describe('Project Store Service', () => {
+  const visScopeStoreKey = `${VIS_SCOPE_DB_NAME}:${VIS_SCOPE_STORE_NAME}`;
+
   beforeEach(() => {
-    for (const k in memoryStore) {
-      delete memoryStore[k];
+    resetVisScopeStore();
+    for (const s in memoryStores) {
+      delete memoryStores[s];
     }
-    window.sessionStorage.clear();
+    if (typeof window !== 'undefined') {
+      (window as any).indexedDB = (window as any).indexedDB || {};
+      if (!window.localStorage) {
+        const localStore: Record<string, string> = {};
+        (window as any).localStorage = {
+          getItem: (key: string) => localStore[key] ?? null,
+          setItem: (key: string, value: string) => { localStore[key] = String(value); },
+          removeItem: (key: string) => { delete localStore[key]; },
+          clear: () => { for (const k in localStore) delete localStore[k]; },
+        };
+      }
+    }
+    window.sessionStorage?.clear?.();
+    window.localStorage?.clear?.();
     vi.clearAllMocks();
   });
 
@@ -90,7 +130,7 @@ describe('Project Store Service', () => {
     await saveProject(project);
 
     // Verify stored object in idb does not contain api_key
-    const stored = memoryStore['datamesh_sprocket_active_project'] as SprocketProject;
+    const stored = memoryStores[visScopeStoreKey][STORAGE_KEY] as SprocketProject;
     expect(stored.supply_retailer?.api_key).toBeUndefined();
 
     // Verify sessionStorage holds the key
@@ -139,5 +179,67 @@ describe('Project Store Service', () => {
     remaining = await deleteProjectFromStore('PRJ-DEL-2');
     expect(remaining.length).toBe(1);
     expect(remaining[0].project_id).toBe('PRJ-66208-001');
+  });
+
+  it('initializes IndexedDB on first device use and creates initial database entry', async () => {
+    expect(isIndexedDBSupported()).toBe(true);
+
+    // Initial state: empty vis_scope_db and uninitialized device
+    expect(memoryStores[visScopeStoreKey]).toBeUndefined();
+    expect(window.localStorage.getItem(DEVICE_INIT_STORAGE_KEY)).toBeNull();
+
+    const status = await ensureIndexedDBInitialized();
+    expect(status.supported).toBe(true);
+    expect(status.isFirstDeviceInit).toBe(true);
+    expect(status.migrated).toBe(false);
+    expect(status.projectCount).toBeGreaterThanOrEqual(1);
+
+    // Check that vis_scope_db store has the initial project saved
+    expect(memoryStores[visScopeStoreKey][STORAGE_KEY]).toBeDefined();
+    expect(memoryStores[visScopeStoreKey][STORAGE_KEY].project_id).toBe('PRJ-66208-001');
+    expect(window.localStorage.getItem(DEVICE_INIT_STORAGE_KEY)).toBeTruthy();
+  });
+
+  it('migrates legacy keyval-store data to vis_scope_db when upgrading existing installation', async () => {
+    // Simulate legacy user who has data in default store
+    const legacyProject = createInitialProject();
+    legacyProject.name = 'Legacy Prairie Home';
+    legacyProject.project_id = 'PRJ-LEGACY-001';
+
+    memoryStores['default'] = {
+      [STORAGE_KEY]: legacyProject,
+      [STORAGE_LIST_KEY]: { [legacyProject.project_id]: legacyProject },
+    };
+
+    const status = await ensureIndexedDBInitialized();
+    expect(status.migrated).toBe(true);
+    expect(status.projectCount).toBe(1);
+
+    // Verify it migrated to vis_scope_db
+    const active = await loadSavedProject();
+    expect(active.project_id).toBe('PRJ-LEGACY-001');
+    expect(active.name).toBe('Legacy Prairie Home');
+  });
+
+  it('createAndPersistProject atomically creates and persists project to vis_scope_db', async () => {
+    const { project: created, savedProjects } = await createAndPersistProject({
+      templateId: 'fire_damage',
+      name: 'Fire Restoration Job 101',
+      city: 'Olathe',
+      state: 'KS',
+      zip: '66061',
+    });
+
+    expect(created.name).toBe('Fire Restoration Job 101');
+    expect(created.template_id).toBe('fire_damage');
+    expect(savedProjects.some((p) => p.project_id === created.project_id)).toBe(true);
+
+    // Verify directly in vis_scope_db storage
+    const activeInDb = memoryStores[visScopeStoreKey][STORAGE_KEY] as SprocketProject;
+    expect(activeInDb.project_id).toBe(created.project_id);
+    expect(activeInDb.name).toBe('Fire Restoration Job 101');
+
+    const listInDb = memoryStores[visScopeStoreKey][STORAGE_LIST_KEY] as Record<string, SprocketProject>;
+    expect(listInDb[created.project_id]).toBeDefined();
   });
 });

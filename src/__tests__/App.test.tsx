@@ -6,29 +6,48 @@ import { createInitialProject } from '../services/storage/projectStore';
 import * as geminiClient from '../services/ai/geminiClient';
 
 // Mock idb-keyval in memory for end-to-end tests
-const memoryStore: Record<string, any> = {};
+const memoryStores: Record<string, Record<string, any>> = {};
+function getStoreKey(customStore?: any): string {
+  if (customStore && customStore.__storeKey) {
+    return customStore.__storeKey;
+  }
+  return 'default';
+}
+
 vi.mock('idb-keyval', () => ({
-  get: vi.fn((key: string) => Promise.resolve(memoryStore[key])),
-  set: vi.fn((key: string, val: any) => {
-    memoryStore[key] = val;
+  createStore: vi.fn((dbName: string, storeName: string) => {
+    return { __storeKey: `${dbName}:${storeName}` };
+  }),
+  get: vi.fn((key: string, customStore?: any) => {
+    const sKey = getStoreKey(customStore);
+    return Promise.resolve(memoryStores[sKey]?.[key]);
+  }),
+  set: vi.fn((key: string, val: any, customStore?: any) => {
+    const sKey = getStoreKey(customStore);
+    if (!memoryStores[sKey]) memoryStores[sKey] = {};
+    memoryStores[sKey][key] = val;
     return Promise.resolve();
   }),
 }));
 
 describe('App End-to-End Orchestrator', () => {
+  const visScopeKey = 'vis_scope_db:projects';
+
   beforeEach(() => {
     vi.spyOn(geminiClient, 'checkServerGeminiEnvStatus').mockResolvedValue({
       configured: false,
       proxyAvailable: false,
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.0-flash',
     });
 
-    for (const k in memoryStore) {
-      delete memoryStore[k];
+    for (const k in memoryStores) {
+      delete memoryStores[k];
     }
     const initial = createInitialProject();
-    memoryStore['datamesh_sprocket_active_project'] = initial;
-    memoryStore['datamesh_sprocket_projects_v1'] = { [initial.project_id]: initial };
+    memoryStores[visScopeKey] = {
+      datamesh_sprocket_active_project: initial,
+      datamesh_sprocket_projects_v1: { [initial.project_id]: initial },
+    };
 
     try {
       window.sessionStorage?.clear?.();

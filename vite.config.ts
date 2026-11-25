@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig, loadEnv, Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 import type { IncomingMessage, ServerResponse } from 'node:http';
@@ -180,4 +181,7 @@ function geminiSecureProxyPlugin(mode: string): Plugin {
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => ({
   plugins: [react(), geminiSecureProxyPlugin(mode)],
+  test: {
+    setupFiles: ['./src/test/setup.ts'],
+  },
 }));
