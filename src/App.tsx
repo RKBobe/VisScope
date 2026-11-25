@@ -30,6 +30,7 @@ import {
   calculateGBA,
   snapToGrid,
 } from './services/math/geometry';
+import { SketchedRoomPayload } from './services/math/sketchEngine';
 import {
   calculateRoomCostRollup,
   calculateProjectSummary,
@@ -73,6 +74,7 @@ const AppContent: React.FC = () => {
   const [activeRoomId, setActiveRoomId] = useState<string | null>(null);
   const [currentLevel, setCurrentLevel] = useState<FloorLevel>('First Floor');
   const [showAnsiBuffer, setShowAnsiBuffer] = useState<boolean>(true);
+  const [isSketchMode, setIsSketchMode] = useState<boolean>(false);
 
   // Modals state
   const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
@@ -318,6 +320,39 @@ const AppContent: React.FC = () => {
     setActiveRoomId(newRoom.id);
   };
 
+  // Add a custom polygon area created in Wall-by-Wall Sketch Mode
+  const handleAddSketchedRoom = (payload: SketchedRoomPayload) => {
+    const newRoom: RoomNode = {
+      id: `room-sketch-${Date.now()}`,
+      name: payload.name,
+      level: payload.level,
+      node_type: payload.node_type,
+      exclude_from_gla: payload.exclude_from_gla,
+      dimensions: payload.dimensions,
+      canvas_position: payload.canvas_position,
+      polygon_points: payload.polygon_points,
+      openings: [],
+      floor_area_sqft: payload.floor_area_sqft,
+      gross_wall_area_sqft: payload.gross_wall_area_sqft,
+      net_wall_area_sqft: payload.gross_wall_area_sqft,
+      quality_class: project.baseline_quality,
+      condition_class: project.baseline_condition,
+      is_class_overridden: false,
+      voice_transcript: '',
+      deficiencies: [],
+      photos: [],
+      cost_rollup: {
+        base_replacement_cost: 0,
+        cost_to_cure: 0,
+        room_total: 0,
+      },
+    };
+
+    const updated = [...project.rooms, newRoom];
+    setProject(recomputeProject(updated));
+    setActiveRoomId(newRoom.id);
+  };
+
   // Switch regional index in valuation modal
   const handleSelectCostIndex = (newIndex: RegionalCostIndex) => {
     setProject(recomputeProject(project.rooms, newIndex));
@@ -483,6 +518,10 @@ const AppContent: React.FC = () => {
           showAnsiBuffer={showAnsiBuffer}
           onToggleAnsiBuffer={() => setShowAnsiBuffer(!showAnsiBuffer)}
           blueprintUnderlayUri={project.property_metadata?.blueprint_underlay_data_uri}
+          currentLevel={currentLevel}
+          sketchMode={isSketchMode}
+          onToggleSketchMode={setIsSketchMode}
+          onCompleteSketch={handleAddSketchedRoom}
         />
 
         {/* Floating Room Template Palette */}
@@ -592,6 +631,8 @@ const AppContent: React.FC = () => {
         }}
         showAnsiBuffer={showAnsiBuffer}
         onToggleAnsiBuffer={() => setShowAnsiBuffer(!showAnsiBuffer)}
+        sketchMode={isSketchMode}
+        onToggleSketchMode={() => setIsSketchMode((prev) => !prev)}
         onAddRoom={handleAddRoom}
         roomsCountPerLevel={roomsCountPerLevel}
       />

@@ -109,4 +109,54 @@ describe('VectorCanvas Component', () => {
 
     expect(handleDeleteRoom).toHaveBeenCalledWith('room-1');
   });
+
+  it('toggles Wall-by-Wall Sketch Mode, draws walls via keyboard + Pop Point, and commits closed area', () => {
+    const handleCompleteSketch = vi.fn();
+
+    render(
+      <VectorCanvas
+        rooms={INITIAL_ROOMS}
+        activeRoomId={null}
+        onSelectRoom={() => {}}
+        onUpdateRoomPosition={() => {}}
+        onUpdateRoomDimensions={() => {}}
+        onDeleteRoom={() => {}}
+        showAnsiBuffer={true}
+        onToggleAnsiBuffer={() => {}}
+        onCompleteSketch={handleCompleteSketch}
+      />
+    );
+
+    // Switch to Sketch Mode
+    fireEvent.click(screen.getByText('Sketch Mode'));
+    expect(screen.getByText('Start Here')).toBeDefined();
+
+    // Set Area Name
+    const nameInput = screen.getByLabelText('Sketch Area Name');
+    fireEvent.change(nameInput, { target: { value: 'Main Floor GLA' } });
+
+    // Drop start anchor
+    fireEvent.click(screen.getByText('Start Here'));
+
+    // Draw 20 ft Right using Length Input + ArrowRight
+    const lenInput = screen.getByLabelText('Wall Length in Feet');
+    fireEvent.change(lenInput, { target: { value: '20' } });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+
+    // Draw 16 ft Down using Length Input + ArrowDown
+    fireEvent.change(lenInput, { target: { value: '16' } });
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+
+    // Pop Point Left (empty length + ArrowLeft) -> aligns with start X
+    fireEvent.keyDown(window, { key: 'ArrowLeft' });
+
+    // Close Area via 'C' key
+    fireEvent.keyDown(window, { key: 'c' });
+
+    expect(handleCompleteSketch).toHaveBeenCalledTimes(1);
+    const payload = handleCompleteSketch.mock.calls[0][0];
+    expect(payload.name).toBe('Main Floor GLA');
+    expect(payload.floor_area_sqft).toBe(320);
+    expect(payload.polygon_points.length).toBe(4);
+  });
 });

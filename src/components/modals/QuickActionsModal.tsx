@@ -24,6 +24,7 @@ import {
   CheckCircle2,
   FolderOpen,
   ArrowRight,
+  PenTool,
 } from 'lucide-react';
 
 export interface QuickActionsModalProps {
@@ -46,6 +47,8 @@ export interface QuickActionsModalProps {
   onSelectLevel: (lvl: FloorLevel) => void;
   showAnsiBuffer: boolean;
   onToggleAnsiBuffer: () => void;
+  sketchMode?: boolean;
+  onToggleSketchMode?: () => void;
   onAddRoom: (template: {
     name: string;
     length_ft: number;
@@ -100,6 +103,8 @@ export const QuickActionsModal: React.FC<QuickActionsModalProps> = ({
   onSelectLevel,
   showAnsiBuffer,
   onToggleAnsiBuffer,
+  sketchMode = false,
+  onToggleSketchMode,
   onAddRoom,
   roomsCountPerLevel,
 }) => {
@@ -339,6 +344,30 @@ export const QuickActionsModal: React.FC<QuickActionsModalProps> = ({
           onClose();
         },
       },
+      ...(onToggleSketchMode
+        ? [
+            {
+              id: 'toggle-sketch-mode',
+              category: 'Floor Levels' as const,
+              title: sketchMode
+                ? 'Exit Wall-by-Wall Sketch Mode'
+                : 'Enter Wall-by-Wall Sketch Mode',
+              description:
+                'Draw custom L-shaped/polygon footprints using keyboard wall lengths, arrow keys, and Pop Points.',
+              badge: sketchMode ? 'Active' : 'Sketcher',
+              badgeColor: sketchMode
+                ? 'bg-cyan-600 text-white border-cyan-500'
+                : 'bg-cyan-950 text-cyan-300 border-cyan-700',
+              icon: PenTool,
+              iconColor: 'text-cyan-400',
+              iconBg: 'bg-cyan-950/70 border-cyan-800',
+              run: () => {
+                onToggleSketchMode();
+                onClose();
+              },
+            },
+          ]
+        : []),
 
       // 4. Room Templates
       ...ROOM_TEMPLATES.map((tmpl) => ({
@@ -385,6 +414,8 @@ export const QuickActionsModal: React.FC<QuickActionsModalProps> = ({
     onOpenUpgradeModal,
     onSelectLevel,
     onToggleAnsiBuffer,
+    sketchMode,
+    onToggleSketchMode,
     onAddRoom,
   ]);
 
