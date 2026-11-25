@@ -58,10 +58,13 @@ import { GeminiSettingsModal } from './components/modals/GeminiSettingsModal';
 import { InspectionReportModal } from './components/modals/InspectionReportModal';
 import { SubscriptionUpgradeModal } from './components/modals/SubscriptionUpgradeModal';
 import { NewProjectModal } from './components/modals/NewProjectModal';
-import { SubscriptionProvider } from './context/SubscriptionContext';
+import { QuickActionsModal } from './components/modals/QuickActionsModal';
+import { SubscriptionProvider, useSubscription } from './context/SubscriptionContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
+import { createMeshEngineBundle } from './services/exporters/bundleSerializer';
 
 const AppContent: React.FC = () => {
+  const { openUpgradeModal } = useSubscription();
   const [project, setProject] = useState<SprocketProject>(createInitialProject());
   const [savedProjects, setSavedProjects] = useState<SprocketProject[]>([]);
   const [geminiConfig, setGeminiConfig] = useState<GeminiConnectionConfig>(() =>
@@ -72,6 +75,7 @@ const AppContent: React.FC = () => {
   const [showAnsiBuffer, setShowAnsiBuffer] = useState<boolean>(true);
 
   // Modals state
+  const [isQuickActionsOpen, setIsQuickActionsOpen] = useState(false);
   const [isNewProjectModalOpen, setIsNewProjectModalOpen] = useState(false);
   const [isValuationOpen, setIsValuationOpen] = useState(false);
   const [isProcurementOpen, setIsProcurementOpen] = useState(false);
@@ -426,6 +430,25 @@ const AppContent: React.FC = () => {
     await saveGeminiConfig(nextConfig);
   };
 
+  const handleExportBundle = async () => {
+    try {
+      const zipBlob = await createMeshEngineBundle(project);
+      const url = URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute(
+        'download',
+        `Vis_Scope_Bundle_${project.project_id}_${project.address.zip}.zip`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export bundle:', err);
+    }
+  };
+
   return (
     <div className="w-screen h-screen flex flex-col bg-[#090d16] text-slate-100 overflow-hidden font-sans print:h-auto print:w-auto print:overflow-visible print:bg-white">
       {/* Top Header */}
@@ -434,6 +457,7 @@ const AppContent: React.FC = () => {
           project={project}
           savedProjects={savedProjects}
           geminiConfigured={isGeminiConfigured(geminiConfig)}
+          onOpenQuickActions={() => setIsQuickActionsOpen(true)}
           onOpenGeminiSettings={() => setIsGeminiSettingsOpen(true)}
           onSelectProject={handleSelectProject}
           onCreateNewProject={handleCreateNewProject}
@@ -543,6 +567,34 @@ const AppContent: React.FC = () => {
 
       {/* Subscription Tiers & Upgrade Modal */}
       <SubscriptionUpgradeModal />
+
+      {/* Quick Actions & Navigation Command Center Modal */}
+      <QuickActionsModal
+        isOpen={isQuickActionsOpen}
+        onClose={() => setIsQuickActionsOpen(false)}
+        project={project}
+        savedProjects={savedProjects}
+        onSelectProject={handleSelectProject}
+        onCreateNewProject={handleCreateNewProject}
+        onSaveManual={() => saveProject(project)}
+        onExportBundle={handleExportBundle}
+        onOpenReport={() => setIsReportOpen(true)}
+        onOpenValuation={() => setIsValuationOpen(true)}
+        onOpenPropertyRecord={() => setIsPropertyRecordOpen(true)}
+        onOpenProcurement={() => setIsProcurementOpen(true)}
+        onOpenIngestion={() => setIsIngestionOpen(true)}
+        onOpenGeminiSettings={() => setIsGeminiSettingsOpen(true)}
+        onOpenUpgradeModal={() => openUpgradeModal()}
+        currentLevel={currentLevel}
+        onSelectLevel={(lvl) => {
+          setCurrentLevel(lvl);
+          setActiveRoomId(null);
+        }}
+        showAnsiBuffer={showAnsiBuffer}
+        onToggleAnsiBuffer={() => setShowAnsiBuffer(!showAnsiBuffer)}
+        onAddRoom={handleAddRoom}
+        roomsCountPerLevel={roomsCountPerLevel}
+      />
     </div>
   );
 };

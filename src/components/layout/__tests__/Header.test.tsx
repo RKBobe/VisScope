@@ -257,4 +257,24 @@ describe('Header Component - Interactive Toolbar Actions & Dropdown Navigation',
     expect(createObjectURLSpy).toHaveBeenCalledWith(fakeBlob);
     expect(revokeObjectURLSpy).toHaveBeenCalledWith('blob:http://localhost/fake-zip');
   });
+
+  it('triggers onOpenQuickActions when clicking the top-left Compass logo button', () => {
+    const onOpenQuickActions = vi.fn();
+    render(
+      <Header
+        project={dummyProject}
+        onOpenQuickActions={onOpenQuickActions}
+        onOpenValuation={vi.fn()}
+        onOpenProcurement={vi.fn()}
+        onOpenIngestion={vi.fn()}
+        onOpenPropertyRecord={vi.fn()}
+        onSaveManual={vi.fn()}
+      />
+    );
+
+    const logoButton = screen.getByLabelText('Open Vis-Scope Command Center and Quick Actions');
+    fireEvent.click(logoButton);
+
+    expect(onOpenQuickActions).toHaveBeenCalledTimes(1);
+  });
 });

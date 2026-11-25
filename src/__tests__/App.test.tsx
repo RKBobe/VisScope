@@ -119,4 +119,16 @@ describe('App End-to-End Orchestrator', () => {
       expect(screen.getByText(/1\. Select Project Inspection Template/i)).toBeDefined();
     });
   });
+
+  it('opens Quick Actions Command Center modal when clicking top-left logo symbol', async () => {
+    render(<App />);
+
+    const logoBtn = screen.getByLabelText('Open Vis-Scope Command Center and Quick Actions');
+    fireEvent.click(logoBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Vis-Scope Command Center/i)).toBeDefined();
+      expect(screen.getByPlaceholderText(/Search actions, tools, exports/i)).toBeDefined();
+    });
+  });
 });

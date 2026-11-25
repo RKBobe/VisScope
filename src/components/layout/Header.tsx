@@ -28,6 +28,7 @@ interface HeaderProps {
   project: SprocketProject;
   savedProjects?: SprocketProject[];
   geminiConfigured?: boolean;
+  onOpenQuickActions?: () => void;
   onOpenGeminiSettings?: () => void;
   onSelectProject?: (proj: SprocketProject) => void;
   onCreateNewProject?: () => void;
@@ -44,6 +45,7 @@ export const Header: React.FC<HeaderProps> = ({
   project,
   savedProjects = [],
   geminiConfigured = false,
+  onOpenQuickActions,
   onOpenGeminiSettings,
   onSelectProject,
   onCreateNewProject,
@@ -157,11 +159,17 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Brand & Project Metadata */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2.5">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-emerald-500 p-0.5 shadow-lg flex items-center justify-center">
-            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center">
-              <Compass className="w-5 h-5 text-sky-400" />
+          <button
+            type="button"
+            onClick={onOpenQuickActions}
+            aria-label="Open Vis-Scope Command Center and Quick Actions"
+            title="Open Command Center (All Actions & Tools)"
+            className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-600 to-emerald-500 p-0.5 shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-all focus:outline-none focus:ring-2 focus:ring-sky-400 cursor-pointer group"
+          >
+            <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center group-hover:bg-slate-900 transition-colors">
+              <Compass className="w-5 h-5 text-sky-400 group-hover:text-emerald-400 transition-colors" />
             </div>
-          </div>
+          </button>
           <div className="relative" ref={projectMenuRef}>
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-sm tracking-wide text-white">
