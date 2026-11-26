@@ -22,6 +22,8 @@ import {
   deleteProjectFromStore,
   ensureIndexedDBInitialized,
   createAndPersistProject,
+  serializeProjectBackupJson,
+  importProjectBackupJson,
 } from './services/storage/projectStore';
 import {
   calculateRoomFloorArea,
@@ -60,6 +62,7 @@ import { InspectionReportModal } from './components/modals/InspectionReportModal
 import { SubscriptionUpgradeModal } from './components/modals/SubscriptionUpgradeModal';
 import { NewProjectModal } from './components/modals/NewProjectModal';
 import { QuickActionsModal } from './components/modals/QuickActionsModal';
+import { InviteGate } from './components/auth/InviteGate';
 import { SubscriptionProvider, useSubscription } from './context/SubscriptionContext';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { createMeshEngineBundle } from './services/exporters/bundleSerializer';
@@ -484,6 +487,49 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleExportBackupJson = () => {
+    try {
+      const jsonStr = serializeProjectBackupJson(project);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute(
+        'download',
+        `Vis_Scope_Backup_${project.project_id}_${new Date().toISOString().slice(0, 10)}.json`
+      );
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Failed to export JSON backup:', err);
+    }
+  };
+
+  const handleImportBackupJson = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const { project: imported, savedProjects: updatedList } =
+          await importProjectBackupJson(text);
+        setProject(imported);
+        setSavedProjects(updatedList);
+        setActiveRoomId(null);
+        setCurrentLevel('First Floor');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to import project backup.';
+        window.alert(msg);
+      }
+    };
+    input.click();
+  };
+
   return (
     <div className="w-screen h-screen flex flex-col bg-[#090d16] text-slate-100 overflow-hidden font-sans print:h-auto print:w-auto print:overflow-visible print:bg-white">
       {/* Top Header */}
@@ -617,6 +663,8 @@ const AppContent: React.FC = () => {
         onCreateNewProject={handleCreateNewProject}
         onSaveManual={() => saveProject(project)}
         onExportBundle={handleExportBundle}
+        onExportBackupJson={handleExportBackupJson}
+        onImportBackupJson={handleImportBackupJson}
         onOpenReport={() => setIsReportOpen(true)}
         onOpenValuation={() => setIsValuationOpen(true)}
         onOpenPropertyRecord={() => setIsPropertyRecordOpen(true)}
@@ -644,7 +692,9 @@ export const App: React.FC = () => {
   return (
     <ErrorBoundary>
       <SubscriptionProvider>
-        <AppContent />
+        <InviteGate>
+          <AppContent />
+        </InviteGate>
       </SubscriptionProvider>
     </ErrorBoundary>
   );

@@ -25,6 +25,8 @@ import {
   FolderOpen,
   ArrowRight,
   PenTool,
+  Download,
+  FolderInput,
 } from 'lucide-react';
 
 export interface QuickActionsModalProps {
@@ -36,6 +38,8 @@ export interface QuickActionsModalProps {
   onCreateNewProject: () => void;
   onSaveManual: () => void | Promise<void>;
   onExportBundle?: () => void;
+  onExportBackupJson?: () => void;
+  onImportBackupJson?: () => void;
   onOpenReport: () => void;
   onOpenValuation: () => void;
   onOpenPropertyRecord: () => void;
@@ -92,6 +96,8 @@ export const QuickActionsModal: React.FC<QuickActionsModalProps> = ({
   onCreateNewProject,
   onSaveManual,
   onExportBundle,
+  onExportBackupJson,
+  onImportBackupJson,
   onOpenReport,
   onOpenValuation,
   onOpenPropertyRecord,
@@ -220,6 +226,46 @@ export const QuickActionsModal: React.FC<QuickActionsModalProps> = ({
           if (onExportBundle) onExportBundle();
         },
       },
+      ...(onExportBackupJson
+        ? [
+            {
+              id: 'export-backup-json',
+              category: 'Project & Files' as const,
+              title: 'Export Project Backup (.JSON)',
+              description:
+                'Download a portable JSON backup of this project to transfer between tablet and desktop.',
+              badge: 'Backup',
+              badgeColor: 'bg-sky-950 text-sky-300 border-sky-700',
+              icon: Download,
+              iconColor: 'text-sky-400',
+              iconBg: 'bg-sky-950/80 border-sky-800/80',
+              run: () => {
+                onClose();
+                onExportBackupJson();
+              },
+            },
+          ]
+        : []),
+      ...(onImportBackupJson
+        ? [
+            {
+              id: 'import-backup-json',
+              category: 'Project & Files' as const,
+              title: 'Import Project Backup (.JSON)',
+              description:
+                'Restore a previously exported Vis-Scope .json project backup into local storage.',
+              badge: 'Restore',
+              badgeColor: 'bg-emerald-950 text-emerald-300 border-emerald-700',
+              icon: FolderInput,
+              iconColor: 'text-emerald-400',
+              iconBg: 'bg-emerald-950/80 border-emerald-800/80',
+              run: () => {
+                onClose();
+                onImportBackupJson();
+              },
+            },
+          ]
+        : []),
 
       // 2. Appraisal Tools
       {
@@ -406,6 +452,8 @@ export const QuickActionsModal: React.FC<QuickActionsModalProps> = ({
     onCreateNewProject,
     onOpenReport,
     onExportBundle,
+    onExportBackupJson,
+    onImportBackupJson,
     onOpenValuation,
     onOpenPropertyRecord,
     onOpenProcurement,

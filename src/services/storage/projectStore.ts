@@ -573,3 +573,62 @@ export async function deleteProjectFromStore(
     return [createInitialProject()];
   }
 }
+
+/**
+ * Serializes a project into a portable JSON backup string (scrubs sensitive session keys).
+ */
+export function serializeProjectBackupJson(project: SprocketProject): string {
+  const safeProject: SprocketProject = {
+    ...project,
+    supply_retailer: project.supply_retailer
+      ? { ...project.supply_retailer, api_key: undefined }
+      : undefined,
+  };
+  return JSON.stringify(
+    {
+      schema: 'vis_scope_project_backup_v1',
+      exported_at: new Date().toISOString(),
+      project: safeProject,
+    },
+    null,
+    2
+  );
+}
+
+/**
+ * Validates and imports a portable JSON project backup into vis_scope_db.
+ */
+export async function importProjectBackupJson(
+  jsonText: string
+): Promise<{ project: SprocketProject; savedProjects: SprocketProject[] }> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(jsonText);
+  } catch {
+    throw new Error('Invalid JSON file. Please select a valid Vis-Scope project backup (.json).');
+  }
+
+  const candidate =
+    parsed && typeof parsed === 'object' && 'project' in parsed
+      ? (parsed as { project: unknown }).project
+      : parsed;
+
+  if (
+    !candidate ||
+    typeof candidate !== 'object' ||
+    typeof (candidate as SprocketProject).project_id !== 'string' ||
+    typeof (candidate as SprocketProject).name !== 'string' ||
+    !Array.isArray((candidate as SprocketProject).rooms)
+  ) {
+    throw new Error('Backup file is missing required Vis-Scope project fields (project_id, name, rooms).');
+  }
+
+  const imported: SprocketProject = {
+    ...(candidate as SprocketProject),
+    updated_at: new Date().toISOString(),
+  };
+
+  await saveProject(imported);
+  const savedProjects = await listSavedProjects();
+  return { project: imported, savedProjects };
+}

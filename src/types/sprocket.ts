@@ -316,6 +316,30 @@ export interface SprocketProject {
   included_trade_categories?: TradeCategory[];
   supply_retailer?: RetailerConnectionConfig;
   property_metadata?: PropertyMetadata;
+  meshengine_sync?: {
+    loan_id: string;
+    revision_id?: string;
+    order_type?: 'initial_prefill' | 'reinspection_dispatch';
+    discrepancies?: Array<{
+      code: string;
+      severity: string;
+      message: string;
+      field?: string | null;
+      expected_value?: unknown;
+      reported_value?: unknown;
+      room_id?: string | null;
+      underwriter_note?: string | null;
+      allowed_cost?: number | null;
+    }>;
+    attachments?: Array<{
+      name: string;
+      bucket_key: string;
+      content_type?: string;
+      sha256?: string | null;
+      download_url?: string | null;
+    }>;
+    last_synced_at?: string;
+  };
   rooms: RoomNode[];
   summary: ProjectSummary;
   created_at: string;

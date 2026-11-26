@@ -34,6 +34,13 @@ describe('App End-to-End Orchestrator', () => {
   const visScopeKey = 'vis_scope_db:projects';
 
   beforeEach(() => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ inviteGateEnabled: false, authenticated: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+
     vi.spyOn(geminiClient, 'checkServerGeminiEnvStatus').mockResolvedValue({
       configured: false,
       proxyAvailable: false,

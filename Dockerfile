@@ -40,7 +40,7 @@ EXPOSE 3000
 
 # Container healthcheck
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/ || exit 1
+  CMD wget --no-verbose --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1
 
 # Start Vis-Scope server
 CMD ["node", "server.js"]

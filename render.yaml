@@ -12,3 +12,8 @@ services:
         value: gemini-3.0-flash
       - key: GEMINI_API_KEY
         sync: false
+      - key: INVITE_ACCESS_CODE
+        sync: false
+      - key: ALLOWED_ORIGIN
+        sync: false
+    healthCheckPath: /api/health

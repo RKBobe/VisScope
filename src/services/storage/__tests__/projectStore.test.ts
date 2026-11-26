@@ -10,6 +10,8 @@ import {
   deleteProjectFromStore,
   ensureIndexedDBInitialized,
   createAndPersistProject,
+  serializeProjectBackupJson,
+  importProjectBackupJson,
   isIndexedDBSupported,
   resetVisScopeStore,
   VIS_SCOPE_DB_NAME,
@@ -241,5 +243,29 @@ describe('Project Store Service', () => {
 
     const listInDb = memoryStores[visScopeStoreKey][STORAGE_LIST_KEY] as Record<string, SprocketProject>;
     expect(listInDb[created.project_id]).toBeDefined();
+  });
+
+  it('exports scrubbed portable JSON backup and restores it cleanly into vis_scope_db', async () => {
+    const project = createInitialProject();
+    project.project_id = 'PRJ-BACKUP-99';
+    project.name = 'Tablet Field Backup';
+    project.supply_retailer = {
+      retailer_id: 'lowes',
+      retailer_name: "Lowe's Pro",
+      price_tier: 'contractor_pro',
+      store_search_url_template: 'https://www.lowes.com/search?searchTerm={query}',
+      api_key: 'DO_NOT_EXPORT_SECRET',
+    };
+
+    const jsonText = serializeProjectBackupJson(project);
+    expect(jsonText).toContain('vis_scope_project_backup_v1');
+    expect(jsonText).not.toContain('DO_NOT_EXPORT_SECRET');
+
+    const { project: restored, savedProjects } = await importProjectBackupJson(jsonText);
+    expect(restored.project_id).toBe('PRJ-BACKUP-99');
+    expect(restored.name).toBe('Tablet Field Backup');
+    expect(savedProjects.some((p) => p.project_id === 'PRJ-BACKUP-99')).toBe(true);
+
+    await expect(importProjectBackupJson('not valid json')).rejects.toThrow(/Invalid JSON/i);
   });
 });
